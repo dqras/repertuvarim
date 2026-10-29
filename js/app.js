@@ -3,7 +3,7 @@
  *
  * Sayfa açıldığında:
  *  1. internetsiz çalışmayı sağlayan service worker'ı başlatır,
- *  2. şarkıları ve kategorileri veri katmanından alır,
+ *  2. cihazdaki veritabanını açar, şarkıları ve kategorileri okur,
  *  3. ekranları hazırlar ve adres çubuğuna göre doğru ekranı gösterir.
  */
 import {
@@ -15,9 +15,13 @@ import {
 } from './pwa.js';
 import { startRouter, navigate } from './router.js';
 import * as repository from './data/repository.js';
+import { describeStorageError, estimateStorage, requestPersistence } from './data/db.js';
+import { el } from './lib/dom.js';
 import { createSongListView } from './views/song-list.js';
 import { renderSongDetail } from './views/song-detail.js';
 import { createStatusView, describeOffline } from './views/status.js';
+import { confirmDialog } from './views/dialog.js';
+import { showMessage } from './views/components.js';
 
 const byId = (id) => document.getElementById(id);
 
@@ -40,6 +44,7 @@ const addButton = byId('fab-add');
 let currentView = null;
 let listScrollY = 0;
 let openedFromList = false;
+let appFailed = false;
 
 /** Bir ekranı gösterir, diğerlerini gizler. title: pencere başlığında görünecek ad. */
 function showView(name, title) {
@@ -52,8 +57,8 @@ function showView(name, title) {
   const isList = name === 'list';
   topbar.brand.hidden = !isList;
   topbar.back.hidden = isList;
-  addButton.hidden = !isList;
-  document.body.classList.toggle('has-fab', isList);
+  addButton.hidden = !isList || appFailed;
+  document.body.classList.toggle('has-fab', isList && !appFailed);
   document.title = title ? `${title} – Repertuvarım` : 'Repertuvarım';
 
   // Listeye dönünce kalınan yere, diğer ekranlarda en üste.
@@ -72,7 +77,15 @@ topbar.back.addEventListener('click', () => {
 
 // --- Durum ve internetsiz çalışma -------------------------------------------
 
-const status = { appError: false, offline: 'pending', online: navigator.onLine, version: null };
+const status = {
+  appError: false,
+  offline: 'pending',
+  online: navigator.onLine,
+  version: null,
+  songCount: null,
+  persistence: 'pending',
+  storage: null,
+};
 const statusView = createStatusView(views.status);
 
 function updateStatus(changes) {
@@ -80,7 +93,19 @@ function updateStatus(changes) {
   statusView.update(status);
   const offline = describeOffline(status.offline);
   topbar.statusDot.dataset.tone = status.appError ? 'danger' : offline.tone;
-  topbar.statusLink.setAttribute('aria-label', `Durum: internetsiz kullanım ${offline.text.toLocaleLowerCase('tr-TR')}`);
+  topbar.statusLink.setAttribute(
+    'aria-label',
+    `Durum: internetsiz kullanım ${offline.text.toLocaleLowerCase('tr-TR')}`
+  );
+}
+
+/** Kayıtlı şarkı sayısını ve kullanılan alanı yeniler. */
+async function refreshStorageStatus() {
+  const [songCount, storage] = await Promise.all([
+    repository.countSongs().catch(() => null),
+    estimateStorage(),
+  ]);
+  updateStatus({ songCount, storage });
 }
 
 function showUpdateToast(waitingWorker) {
@@ -114,30 +139,123 @@ async function setUpOfflineSupport() {
   updateStatus({ offline: 'ready', version: await askWorkerVersion(active) });
 }
 
+// --- Kullanıcı işlemleri ---------------------------------------------------
+
+/** Favori düğmesi: kaydeder ve güncel şarkıyı döndürür; hata olursa mesaj gösterir. */
+async function toggleFavorite(song) {
+  try {
+    return await repository.setFavorite(song.id, !song.favorite);
+  } catch (error) {
+    console.error('Favori kaydedilemedi:', error);
+    showMessage(describeStorageError(error), { tone: 'error' });
+    throw error;
+  }
+}
+
+async function removeSamples() {
+  const confirmed = await confirmDialog({
+    title: 'Örnek şarkılar kaldırılsın mı?',
+    message:
+      'Listedeki örnek şarkıların hepsi silinir. Kendi eklediğiniz şarkılar etkilenmez. Bu işlem geri alınamaz.',
+    confirmLabel: 'Örnekleri kaldır',
+    danger: true,
+  });
+  if (!confirmed) return;
+  try {
+    const removed = await repository.removeSampleSongs();
+    showMessage(`${removed} örnek şarkı kaldırıldı.`);
+  } catch (error) {
+    console.error('Örnek şarkılar kaldırılamadı:', error);
+    showMessage(describeStorageError(error), { tone: 'error' });
+  }
+}
+
 // --- Başlangıç -------------------------------------------------------------
 
-async function start() {
-  const [songs, categories] = await Promise.all([repository.listSongs(), repository.listCategories()]);
-  const categoryById = new Map(categories.map((category) => [category.id, category]));
-
-  createSongListView(views.list, { songs, categories, usesSampleData: repository.usesSampleData });
-
+function startAppRouter(categoryById) {
   startRouter(
     [
       { pattern: /^\/$/, show: () => showView('list') },
       {
         pattern: /^\/sarki\/(?<id>[^/]+)$/,
         show: async ({ id }) => {
-          const song = await repository.getSong(id);
-          renderSongDetail(views.song, song, categoryById);
+          if (appFailed) {
+            navigate('/', { replace: true });
+            return;
+          }
+          let song = null;
+          try {
+            song = await repository.getSong(id);
+          } catch (error) {
+            console.error('Şarkı okunamadı:', error);
+            showMessage(describeStorageError(error), { tone: 'error' });
+          }
+          renderSongDetail(views.song, song, categoryById, { onToggleFavorite: toggleFavorite });
           showView('song', song ? song.title : 'Şarkı bulunamadı');
         },
       },
       { pattern: /^\/yeni$/, show: () => showView('new', 'Yeni şarkı') },
-      { pattern: /^\/durum$/, show: () => showView('status', 'Durum') },
+      {
+        pattern: /^\/durum$/,
+        show: () => {
+          showView('status', 'Durum');
+          refreshStorageStatus();
+        },
+      },
     ],
     () => navigate('/', { replace: true })
   );
+}
+
+function showStartupError(error) {
+  appFailed = true;
+  updateStatus({ appError: true });
+  views.list.replaceChildren(
+    el(
+      'div',
+      { class: 'page page--screen' },
+      el('h1', { class: 'screen-title', tabindex: '-1', text: 'Şarkılar açılamadı' }),
+      el('p', { class: 'startup-error__text', text: describeStorageError(error) }),
+      el('p', { class: 'startup-error__detail', text: `Teknik ayrıntı: ${error?.cause?.name ?? error?.name ?? 'bilinmiyor'}` })
+    )
+  );
+}
+
+async function start() {
+  await repository.init({
+    onBlocked: () =>
+      showMessage('Uygulamanın eski sürümü başka bir pencerede açık. Diğer pencereleri kapatın.', {
+        tone: 'error',
+        duration: 10000,
+      }),
+    onVersionChange: () =>
+      showMessage('Uygulama başka bir pencerede güncellendi. Bu pencereyi kapatıp yeniden açın.', {
+        tone: 'error',
+        duration: 15000,
+      }),
+  });
+
+  const [songs, categories] = await Promise.all([repository.listSongs(), repository.listCategories()]);
+  const categoryById = new Map(categories.map((category) => [category.id, category]));
+
+  const listView = createSongListView(views.list, { songs, categories, onRemoveSamples: removeSamples });
+
+  // Kayıtlı veriler değişince (favori, silme) liste ve durum yenilenir.
+  repository.onChange(async () => {
+    try {
+      listView.setSongs(await repository.listSongs());
+    } catch (error) {
+      console.error('Liste yenilenemedi:', error);
+      showMessage(describeStorageError(error), { tone: 'error' });
+    }
+    refreshStorageStatus();
+  });
+
+  startAppRouter(categoryById);
+
+  // Verilerin kendiliğinden silinmemesi için izin iste (tarayıcı genellikle sessizce karar verir).
+  updateStatus({ persistence: await requestPersistence() });
+  refreshStorageStatus();
 }
 
 updateStatus({});
@@ -148,12 +266,6 @@ setUpOfflineSupport().catch((error) => {
 
 start().catch((error) => {
   console.error('Uygulama başlatılamadı:', error);
-  updateStatus({ appError: true });
-  views.list.hidden = false;
-  views.list.replaceChildren(
-    Object.assign(document.createElement('p'), {
-      className: 'page page--screen',
-      textContent: 'Şarkılar yüklenemedi. Uygulamayı kapatıp yeniden açmayı deneyin.',
-    })
-  );
+  showStartupError(error);
+  startAppRouter(new Map());
 });
