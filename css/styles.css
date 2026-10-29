@@ -1466,3 +1466,341 @@ a {
     right: max(var(--space-4), calc((100vw - var(--page-width)) / 2 + var(--space-4)));
   }
 }
+
+/* ==========================================================================
+   Şarkı ekranı (8. aşama): akorlar sözlerin üstünde, alt çubukta ton ve yazı boyutu
+   ========================================================================== */
+
+:root {
+  --bar-height: 64px;
+}
+
+.song-view {
+  /* Alt çubuk son satırları örtmesin */
+  padding-bottom: calc(var(--bar-height) + var(--space-7) + env(safe-area-inset-bottom));
+}
+
+.song-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.song-meta .cat-tag {
+  font-size: var(--text-sm);
+}
+
+.song-meta__key {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.fav-toggle--plain .icon {
+  color: var(--color-text-muted);
+}
+
+.fav-toggle--plain[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  color: var(--color-accent);
+}
+
+.fav-toggle--plain[aria-pressed="true"] .icon {
+  color: var(--color-accent);
+}
+
+.song-notes {
+  margin-top: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-button);
+  background: var(--color-surface);
+}
+
+.song-notes summary {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.song-notes p {
+  margin-top: var(--space-2);
+}
+
+.transpose-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-5);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border-radius: var(--radius-button);
+  background: var(--color-surface);
+  font-size: var(--text-sm);
+}
+
+.transpose-status .button {
+  gap: 6px;
+}
+
+.transpose-status .icon {
+  width: 16px;
+  height: 16px;
+}
+
+#transpose-warning {
+  margin-top: var(--space-3);
+}
+
+/* --- Söz ve akorlar --- */
+
+.song-text {
+  margin-top: var(--space-6);
+  font-size: calc(1.125rem * var(--song-scale, 1));
+  line-height: 1.35;
+}
+
+.sl + .sl {
+  margin-top: 0.2em;
+}
+
+.sl--gap {
+  height: 0.9em;
+}
+
+.sl--lyric {
+  white-space: pre-wrap;
+}
+
+.sl--section {
+  margin-top: 0.6em;
+  color: var(--color-text-muted);
+  font-size: 0.8em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.sl--chords {
+  position: relative;
+}
+
+/* Her kelime bir blok; akorlar bloğun üst kısmındaki boşlukta durur. */
+.sl--chords .w {
+  position: relative;
+  display: inline-block;
+  padding-top: 1.3em;
+  white-space: pre;
+  vertical-align: bottom;
+}
+
+.sl--chords .p {
+  position: relative;
+}
+
+.c {
+  position: absolute;
+  bottom: calc(100% + 0.05em);
+  left: 0;
+  color: var(--color-accent);
+  font-size: 0.85em;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* Tanınmayan akor: aynı yerde ama altı noktalı */
+.c--unknown {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+/* x2, N.C. gibi işaretler */
+.c--note {
+  color: var(--color-text-muted);
+}
+
+/* --- Alt çubuk --- */
+
+.song-bar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 15;
+  padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid var(--color-line);
+  background: var(--color-bg);
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.song-bar__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  max-width: var(--page-width);
+  height: var(--bar-height);
+  margin: 0 auto;
+  padding: 0 max(var(--space-4), env(safe-area-inset-right)) 0 max(var(--space-4), env(safe-area-inset-left));
+}
+
+.song-bar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--color-line);
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.bar-button .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.bar-button:hover:not(:disabled) {
+  border-color: var(--color-text-muted);
+}
+
+.bar-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.bar-button:disabled,
+.bar-key:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.bar-a {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.bar-a--small {
+  font-size: 14px;
+}
+
+/* Ton seçimi: şimdiki ton büyük ve sarı */
+.bar-key {
+  min-width: 7.5rem;
+  height: 48px;
+  padding: 0 var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-accent);
+  font: inherit;
+  font-size: var(--text-base);
+  font-weight: 700;
+  text-align: center;
+  text-align-last: center;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.bar-key option {
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+/* Şarkı ekranında güncelleme bildirimi alt çubuğun üstünde durur. */
+.has-bar .toast {
+  bottom: calc(var(--bar-height) + var(--space-3) + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 360px) {
+  .bar-key {
+    min-width: 6rem;
+  }
+
+  .bar-button {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* --- Sitelerden aktarma --- */
+
+.notice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.notice--import {
+  border: 1px solid var(--color-line);
+}
+
+.help__lead {
+  max-width: 36rem;
+  margin-top: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-md);
+}
+
+.help__section {
+  margin-top: var(--space-6);
+}
+
+.help__section > p {
+  max-width: 38rem;
+  margin-top: var(--space-3);
+}
+
+.help-steps {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 38rem;
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.help-steps li::marker {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.help-steps .button {
+  margin-top: var(--space-2);
+}
+
+.help > .button {
+  margin-top: var(--space-6);
+}
+
+/* Sürüklenecek yer imi: düğme gibi görünür */
+.bookmarklet-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  margin-top: var(--space-2);
+  padding: 0 var(--space-4);
+  border: 1px dashed var(--color-accent);
+  border-radius: var(--radius-button);
+  color: var(--color-accent);
+  font-weight: 700;
+  text-decoration: none;
+  cursor: grab;
+}
