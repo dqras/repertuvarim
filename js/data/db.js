@@ -19,6 +19,10 @@ const UPGRADES = [
     db.createObjectStore('categories', { keyPath: 'id' });
     db.createObjectStore('settings', { keyPath: 'key' });
   },
+  // Sürüm 2: kaydedilmemiş şarkı taslakları (yeni şarkı için "new", düzenleme için şarkının id'si)
+  (db) => {
+    db.createObjectStore('drafts', { keyPath: 'key' });
+  },
 ];
 const DB_VERSION = UPGRADES.length;
 

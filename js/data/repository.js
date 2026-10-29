@@ -3,7 +3,7 @@
  * Veriler cihazdaki veritabanında (IndexedDB) saklanır; ayrıntılar db.js'de.
  */
 import { openDatabase, transact, result, StorageError } from './db.js';
-import { normalizeSong, normalizeCategory } from './model.js';
+import { normalizeSong, normalizeCategory, createId } from './model.js';
 import { DEFAULT_CATEGORIES } from './defaults.js';
 import { SAMPLE_SONGS } from './sample-songs.js';
 
@@ -72,6 +72,68 @@ export async function setFavorite(id, favorite) {
   });
   notifyChange();
   return song;
+}
+
+/**
+ * Yeni şarkı kaydeder. fields: model.js validateSongForm'un "value" çıktısı.
+ * Kaydedilen şarkıyı döndürür.
+ */
+export async function createSong(fields) {
+  const now = Date.now();
+  const song = normalizeSong({ ...fields, id: createId(), isSample: false, createdAt: now, updatedAt: now });
+  await transact(await init(), ['songs', 'drafts'], 'readwrite', async ({ songs, drafts }) => {
+    await result(songs.add(song));
+    drafts.delete('new');
+  });
+  notifyChange();
+  return song;
+}
+
+/**
+ * Kayıtlı şarkıyı günceller; eklenme zamanı korunur.
+ * Düzenlenen örnek şarkı artık kullanıcının şarkısı sayılır ("Örnekleri kaldır" onu silmez).
+ */
+export async function updateSong(id, fields) {
+  const song = await transact(await init(), ['songs', 'drafts'], 'readwrite', async ({ songs, drafts }) => {
+    const row = await result(songs.get(id));
+    if (!row) throw new StorageError('notFound');
+    const updated = normalizeSong({ ...row, ...fields, id, isSample: false, createdAt: row.createdAt, updatedAt: Date.now() });
+    await result(songs.put(updated));
+    drafts.delete(id);
+    return updated;
+  });
+  notifyChange();
+  return song;
+}
+
+/** Şarkıyı (ve varsa taslağını) siler. */
+export async function deleteSong(id) {
+  await transact(await init(), ['songs', 'drafts'], 'readwrite', ({ songs, drafts }) => {
+    songs.delete(id);
+    drafts.delete(id);
+  });
+  notifyChange();
+}
+
+// --- Taslaklar: kaydedilmemiş form içerikleri --------------------------------
+// key: yeni şarkı için "new", düzenlenen şarkı için şarkının id'si.
+
+export async function getDraft(key) {
+  return (await transact(await init(), 'drafts', 'readonly', ({ drafts }) => result(drafts.get(key)))) ?? null;
+}
+
+export async function saveDraft(key, form) {
+  const draft = { key, form, updatedAt: Date.now() };
+  await transact(await init(), 'drafts', 'readwrite', ({ drafts }) => result(drafts.put(draft)));
+  return draft;
+}
+
+export async function deleteDraft(key) {
+  await transact(await init(), 'drafts', 'readwrite', ({ drafts }) => result(drafts.delete(key)));
+}
+
+export async function listDrafts() {
+  return transact(await init(), 'drafts', 'readonly', ({ drafts }) => result(drafts.getAll()));
 }
 
 /** Örnek şarkıların hepsini siler; kaç şarkı silindiğini döndürür. Kullanıcının şarkılarına dokunmaz. */
