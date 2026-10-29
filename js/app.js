@@ -13,12 +13,13 @@ import {
   watchConnection,
   setupInstallButton,
 } from './pwa.js';
-import { startRouter, navigate } from './router.js';
+import { startRouter, navigate, canGoBack } from './router.js';
 import * as repository from './data/repository.js';
 import { describeStorageError, estimateStorage, requestPersistence } from './data/db.js';
 import { el } from './lib/dom.js';
 import { createSongListView } from './views/song-list.js';
 import { renderSongDetail } from './views/song-detail.js';
+import { createSongEditor } from './views/song-editor.js';
 import { createStatusView, describeOffline } from './views/status.js';
 import { confirmDialog } from './views/dialog.js';
 import { showMessage } from './views/components.js';
@@ -28,35 +29,41 @@ const byId = (id) => document.getElementById(id);
 const views = {
   list: byId('view-list'),
   song: byId('view-song'),
-  new: byId('view-new'),
+  editor: byId('view-editor'),
   status: byId('view-status'),
 };
 const topbar = {
   brand: byId('topbar-brand'),
   back: byId('topbar-back'),
+  backLabel: byId('topbar-back-label'),
   statusLink: byId('topbar-status'),
   statusDot: byId('status-dot'),
 };
 const addButton = byId('fab-add');
 
+let listView = null;
+let editor = null;
+let editorSongId = null; // düzenlenen şarkı (yeni şarkıda null)
+let appFailed = false;
+
 // --- Ekranlar arası geçiş --------------------------------------------------
 
 let currentView = null;
 let listScrollY = 0;
-let openedFromList = false;
-let appFailed = false;
 
 /** Bir ekranı gösterir, diğerlerini gizler. title: pencere başlığında görünecek ad. */
 function showView(name, title) {
   const previous = currentView;
   if (previous === 'list') listScrollY = window.scrollY;
-  if (name !== 'list') openedFromList = previous === 'list';
+  // Formdan herhangi bir yolla çıkılınca bekleyen taslak hemen kaydedilir.
+  if (previous === 'editor' && name !== 'editor') editor?.suspend().then(refreshDrafts);
 
   for (const [key, node] of Object.entries(views)) node.hidden = key !== name;
 
   const isList = name === 'list';
   topbar.brand.hidden = !isList;
   topbar.back.hidden = isList;
+  topbar.backLabel.textContent = name === 'song' ? 'Şarkılar' : 'Geri';
   addButton.hidden = !isList || appFailed;
   document.body.classList.toggle('has-fab', isList && !appFailed);
   document.title = title ? `${title} – Repertuvarım` : 'Repertuvarım';
@@ -69,11 +76,18 @@ function showView(name, title) {
   if (previous) views[name].querySelector('[tabindex="-1"]')?.focus({ preventScroll: true });
 }
 
-// Geri düğmesi: listeden gelindiyse tarayıcı geçmişinde bir adım geri, değilse listeye.
-topbar.back.addEventListener('click', () => {
-  if (openedFromList) history.back();
-  else navigate('/');
-});
+/** Geri: formda değişiklik varsa önce sorar; geride uygulama ekranı yoksa bir üst ekrana gider. */
+async function goBack() {
+  if (currentView === 'editor' && editor && !(await editor.requestLeave())) return;
+  if (canGoBack()) {
+    history.back();
+  } else {
+    const parent = currentView === 'editor' && editorSongId ? `/sarki/${encodeURIComponent(editorSongId)}` : '/';
+    navigate(parent, { replace: true });
+  }
+}
+
+topbar.back.addEventListener('click', goBack);
 
 // --- Durum ve internetsiz çalışma -------------------------------------------
 
@@ -141,14 +155,19 @@ async function setUpOfflineSupport() {
 
 // --- Kullanıcı işlemleri ---------------------------------------------------
 
+/** Hata mesajını gösterir ve hatayı çağırana geri fırlatır. */
+function reportAndRethrow(label, error) {
+  console.error(label, error);
+  showMessage(describeStorageError(error), { tone: 'error' });
+  throw error;
+}
+
 /** Favori düğmesi: kaydeder ve güncel şarkıyı döndürür; hata olursa mesaj gösterir. */
 async function toggleFavorite(song) {
   try {
     return await repository.setFavorite(song.id, !song.favorite);
   } catch (error) {
-    console.error('Favori kaydedilemedi:', error);
-    showMessage(describeStorageError(error), { tone: 'error' });
-    throw error;
+    return reportAndRethrow('Favori kaydedilemedi:', error);
   }
 }
 
@@ -156,7 +175,7 @@ async function removeSamples() {
   const confirmed = await confirmDialog({
     title: 'Örnek şarkılar kaldırılsın mı?',
     message:
-      'Listedeki örnek şarkıların hepsi silinir. Kendi eklediğiniz şarkılar etkilenmez. Bu işlem geri alınamaz.',
+      'Listedeki örnek şarkıların hepsi silinir. Kendi eklediğiniz ya da düzenlediğiniz şarkılar etkilenmez. Bu işlem geri alınamaz.',
     confirmLabel: 'Örnekleri kaldır',
     danger: true,
   });
@@ -170,6 +189,63 @@ async function removeSamples() {
   }
 }
 
+/** Formun kullandığı işlemler: taslaklar, kaydetme, silme, geri. */
+const editorActions = {
+  loadDraft: (key) => repository.getDraft(key),
+  saveDraft: (key, form) => repository.saveDraft(key, form),
+  deleteDraft: (key) => repository.deleteDraft(key),
+  leave: goBack,
+
+  async save(value, songId) {
+    let song;
+    try {
+      song = songId ? await repository.updateSong(songId, value) : await repository.createSong(value);
+    } catch (error) {
+      return reportAndRethrow('Şarkı kaydedilemedi:', error);
+    }
+    showMessage(songId ? 'Değişiklikler kaydedildi.' : 'Şarkı kaydedildi.');
+    const songPath = `/sarki/${encodeURIComponent(song.id)}`;
+    // Düzenlemede şarkı ekranına geri dönülür; yeni şarkıda form, şarkı ekranıyla değiştirilir.
+    if (songId && canGoBack()) history.back();
+    else navigate(songPath, { replace: true });
+    return song;
+  },
+
+  async remove(songId) {
+    try {
+      await repository.deleteSong(songId);
+    } catch (error) {
+      reportAndRethrow('Şarkı silinemedi:', error);
+    }
+    showMessage('Şarkı silindi.');
+    navigate('/', { replace: true });
+  },
+};
+
+/** Kaydedilmemiş taslakları listenin üstünde gösterir. */
+async function refreshDrafts() {
+  if (!listView) return;
+  try {
+    const items = [];
+    for (const draft of await repository.listDrafts()) {
+      const typedTitle = String(draft.form?.title ?? '').trim();
+      if (draft.key === 'new') {
+        items.push({ title: typedTitle || 'Adsız yeni şarkı', href: '#/yeni' });
+        continue;
+      }
+      const song = await repository.getSong(draft.key);
+      if (!song) {
+        repository.deleteDraft(draft.key).catch(() => {}); // şarkısı silinmiş taslak
+        continue;
+      }
+      items.push({ title: typedTitle || song.title, href: `#/sarki/${encodeURIComponent(song.id)}/duzenle` });
+    }
+    listView.setDrafts(items);
+  } catch (error) {
+    console.error('Taslaklar okunamadı:', error);
+  }
+}
+
 // --- Başlangıç -------------------------------------------------------------
 
 function startAppRouter(categoryById) {
@@ -179,10 +255,7 @@ function startAppRouter(categoryById) {
       {
         pattern: /^\/sarki\/(?<id>[^/]+)$/,
         show: async ({ id }) => {
-          if (appFailed) {
-            navigate('/', { replace: true });
-            return;
-          }
+          if (appFailed) return navigate('/', { replace: true });
           let song = null;
           try {
             song = await repository.getSong(id);
@@ -194,7 +267,35 @@ function startAppRouter(categoryById) {
           showView('song', song ? song.title : 'Şarkı bulunamadı');
         },
       },
-      { pattern: /^\/yeni$/, show: () => showView('new', 'Yeni şarkı') },
+      {
+        pattern: /^\/sarki\/(?<id>[^/]+)\/duzenle$/,
+        show: async ({ id }) => {
+          if (appFailed) return navigate('/', { replace: true });
+          let song = null;
+          try {
+            song = await repository.getSong(id);
+          } catch (error) {
+            console.error('Şarkı okunamadı:', error);
+          }
+          if (!song) {
+            renderSongDetail(views.song, null, categoryById);
+            showView('song', 'Şarkı bulunamadı');
+            return;
+          }
+          editorSongId = song.id;
+          await editor.open({ song });
+          showView('editor', `Düzenle: ${song.title}`);
+        },
+      },
+      {
+        pattern: /^\/yeni$/,
+        show: async () => {
+          if (appFailed) return navigate('/', { replace: true });
+          editorSongId = null;
+          await editor.open();
+          showView('editor', 'Yeni şarkı');
+        },
+      },
       {
         pattern: /^\/durum$/,
         show: () => {
@@ -238,9 +339,10 @@ async function start() {
   const [songs, categories] = await Promise.all([repository.listSongs(), repository.listCategories()]);
   const categoryById = new Map(categories.map((category) => [category.id, category]));
 
-  const listView = createSongListView(views.list, { songs, categories, onRemoveSamples: removeSamples });
+  listView = createSongListView(views.list, { songs, categories, onRemoveSamples: removeSamples });
+  editor = createSongEditor(views.editor, { categories, actions: editorActions });
 
-  // Kayıtlı veriler değişince (favori, silme) liste ve durum yenilenir.
+  // Kayıtlı veriler değişince (ekleme, düzenleme, silme, favori) liste ve durum yenilenir.
   repository.onChange(async () => {
     try {
       listView.setSongs(await repository.listSongs());
@@ -248,15 +350,22 @@ async function start() {
       console.error('Liste yenilenemedi:', error);
       showMessage(describeStorageError(error), { tone: 'error' });
     }
+    refreshDrafts();
     refreshStorageStatus();
   });
 
   startAppRouter(categoryById);
+  refreshDrafts();
 
   // Verilerin kendiliğinden silinmemesi için izin iste (tarayıcı genellikle sessizce karar verir).
   updateStatus({ persistence: await requestPersistence() });
   refreshStorageStatus();
 }
+
+// Uygulama arka plana alınırken (telefonda başka uygulamaya geçince) bekleyen taslak kaydedilir.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && currentView === 'editor') editor?.flush();
+});
 
 updateStatus({});
 setUpOfflineSupport().catch((error) => {
