@@ -11,7 +11,7 @@ import {
   activateUpdate,
   askWorkerVersion,
   watchConnection,
-  setupInstallButton,
+  createInstaller,
 } from './pwa.js';
 import { startRouter, navigate, canGoBack } from './router.js';
 import * as repository from './data/repository.js';
@@ -23,6 +23,7 @@ import { createSongEditor } from './views/song-editor.js';
 import { createStatusView, describeOffline } from './views/status.js';
 import { confirmDialog } from './views/dialog.js';
 import { showMessage } from './views/components.js';
+import { setupInstallUi } from './views/install.js';
 
 const byId = (id) => document.getElementById(id);
 
@@ -134,7 +135,6 @@ function showUpdateToast(waitingWorker) {
 
 async function setUpOfflineSupport() {
   watchConnection((online) => updateStatus({ online }));
-  setupInstallButton(byId('install-button'));
 
   if (!('serviceWorker' in navigator)) {
     updateStatus({ offline: 'unsupported' });
@@ -365,6 +365,15 @@ async function start() {
 // Uygulama arka plana alınırken (telefonda başka uygulamaya geçince) bekleyen taslak kaydedilir.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && currentView === 'editor') editor?.flush();
+});
+
+// "Ana ekrana ekle": listede bir kart ve Durum ekranında bir düğme.
+// Yükleme penceresine izin veren olay sayfa açılır açılmaz gelebileceği için en başta kurulur.
+setupInstallUi({
+  installer: createInstaller(),
+  card: byId('install-card'),
+  statusButton: byId('install-button'),
+  onInstalled: () => showMessage('Uygulama yüklendi. Artık ana ekranınızdan açabilirsiniz.'),
 });
 
 updateStatus({});

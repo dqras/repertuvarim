@@ -92,35 +92,90 @@ export function watchConnection(onChange) {
 }
 
 /**
- * Tarayıcı uygulamanın yüklenebileceğini bildirirse düğmeyi gösterir.
- * (Chrome ve Edge bu bildirimi yapar; iPhone'da yükleme Paylaş menüsünden yapılır.)
+ * Ana ekrana ekleme (uygulama olarak yükleme).
+ *
+ * - Chrome, Edge ve Samsung Internet (Android ve Windows) yüklemeye izin verdiğini
+ *   bildirir; o zaman tek dokunuşla tarayıcının kendi "Yükle" penceresi açılır.
+ * - iPhone ve iPad'de Apple, sitelerin kendilerini ana ekrana eklemesine izin vermez;
+ *   bu cihazlarda kullanıcı Paylaş menüsünü kullanmalıdır. Uygulama bunun adımlarını gösterir.
+ * - Uygulama zaten ana ekrandan (kendi penceresinde) açıldıysa hiçbir şey gösterilmez.
+ *
+ * Sonuç: { state(), install(), onChange(fn) }
+ *   state() → { installed, canPrompt, platform: 'ios' | 'android' | 'desktop', inAppBrowser }
+ *   install() → 'accepted' | 'dismissed' | 'manual' (manual: adımları göstermek gerekir)
  */
-export function setupInstallButton(button) {
-  let installPrompt = null;
+export function createInstaller() {
+  let deferredPrompt = null;
+  let installedNow = false;
+  const listeners = new Set();
+  const notify = () => listeners.forEach((listener) => listener());
 
   window.addEventListener('beforeinstallprompt', (event) => {
-    event.preventDefault();
-    installPrompt = event;
-    button.hidden = false;
+    event.preventDefault(); // tarayıcının kendi bilgi çubuğu yerine bizim düğmemiz kullanılır
+    deferredPrompt = event;
+    notify();
   });
+  window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    installedNow = true;
+    notify();
+  });
+  const standaloneQuery = window.matchMedia?.('(display-mode: standalone)');
+  standaloneQuery?.addEventListener?.('change', notify);
 
-  button.addEventListener('click', async () => {
-    if (!installPrompt) return;
-    button.disabled = true;
+  function state() {
+    return {
+      installed: installedNow || isStandalone(),
+      canPrompt: deferredPrompt !== null,
+      platform: detectPlatform(),
+      inAppBrowser: isInAppBrowser(),
+    };
+  }
+
+  async function install() {
+    if (!deferredPrompt) return 'manual';
+    const promptEvent = deferredPrompt;
+    deferredPrompt = null; // aynı pencere yalnızca bir kez açılabilir
     try {
-      await installPrompt.prompt();
-      await installPrompt.userChoice;
+      await promptEvent.prompt();
+      const choice = await promptEvent.userChoice;
+      return choice?.outcome === 'accepted' ? 'accepted' : 'dismissed';
     } catch (error) {
       console.warn('Yükleme penceresi açılamadı:', error);
+      return 'manual';
     } finally {
-      installPrompt = null;
-      button.hidden = true;
-      button.disabled = false;
+      notify();
     }
-  });
+  }
 
-  window.addEventListener('appinstalled', () => {
-    installPrompt = null;
-    button.hidden = true;
-  });
+  return {
+    state,
+    install,
+    onChange(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
+/** Uygulama ana ekrandan / kendi penceresinde mi açıldı? */
+export function isStandalone() {
+  return (
+    window.matchMedia?.('(display-mode: standalone)').matches ||
+    window.matchMedia?.('(display-mode: window-controls-overlay)').matches ||
+    window.navigator.standalone === true // iPhone ve iPad
+  );
+}
+
+function detectPlatform() {
+  const agent = navigator.userAgent || '';
+  const touchMac = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1; // iPadOS
+  if (/iPhone|iPad|iPod/i.test(agent) || touchMac) return 'ios';
+  if (/Android/i.test(agent)) return 'android';
+  return 'desktop';
+}
+
+/** Instagram, WhatsApp gibi uygulamaların içindeki tarayıcılar ana ekrana ekleyemez. */
+function isInAppBrowser() {
+  return /FBAN|FBAV|Instagram|Line\/|WhatsApp|Twitter|TikTok|musical_ly|Snapchat/i.test(navigator.userAgent || '');
 }
