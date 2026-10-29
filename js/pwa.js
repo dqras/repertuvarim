@@ -25,6 +25,7 @@ export async function registerServiceWorker({ onUpdateReady, onInstallFailed } =
     console.error('Service worker kaydedilemedi:', error);
     return null;
   }
+  if (!registration) return null;
 
   // Sayfayı zaten bir sürüm yönetiyorsa ve yenisi bekliyorsa, bu bir güncellemedir.
   const reportWaitingWorker = () => {
