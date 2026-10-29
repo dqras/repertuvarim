@@ -100,6 +100,18 @@ export function transposeContent(content, steps, { key = '', spelling } = {}) {
 
 // --- Akorları ayrı satırda olan metni çevirme ----------------------------------
 
+/**
+ * "Nakarat", "Giriş:", "Ara Solo (x2)" gibi bölüm başlığı satırları.
+ * Akor satırı bunlarla birleştirilmez; şarkı ekranında başlık olarak gösterilir.
+ */
+const SECTION_LABEL =
+  /^\s*[[(]?\s*(?:nakarat|giriş|giris|ara\s*(?:müzik|muzik|solo|nağme|nagme)?|solo|kıta|kita|köprü|kopru|final|bitiş|bitis|intro|outro|verse|chorus|bridge|pre-?chorus|enst(?:rümantal|rumantal)?\.?)\s*\d*\s*[\])]?\s*(?:\(?\s*[x×]\s*\d+\s*\)?)?\s*:?\s*$/i;
+
+/** Satır bir bölüm başlığı mı? (Nakarat, Giriş, Solo …) */
+export function isSectionLabel(line) {
+  return SECTION_LABEL.test(String(line ?? ''));
+}
+
 // Akor satırlarında akor sayılmayan ama satırı bozmayan işaretler (çizgi, bölü vb.)
 const BAR_MARKS = /^(?:\|+|:?\|\|?:?|\/|-+|%|\.{1,3}|…|\*)$/;
 const REPEAT_MARK = /^(?:\(?[x×]\d+\)?|\(?\d+[x×]\)?)$/i;
@@ -175,7 +187,12 @@ export function convertChordSheet(content) {
     converted += 1;
     const next = lines[index + 1];
     const canMerge =
-      !chordLine.label && next !== undefined && next.trim() !== '' && !/[[\]]/.test(next) && !parseChordLine(next);
+      !chordLine.label &&
+      next !== undefined &&
+      next.trim() !== '' &&
+      !/[[\]]/.test(next) &&
+      !parseChordLine(next) &&
+      !isSectionLabel(next);
 
     if (canMerge) {
       output.push(mergeIntoLyric(chordLine.tokens, expandTabs(next.normalize('NFC'))));
@@ -208,4 +225,41 @@ function convertInPlace(chordLine, line) {
     result = `${result.slice(0, token.column)}[${token.text}]${result.slice(token.column + token.text.length)}`;
   }
   return result.replace(/\s+$/, '');
+}
+
+// --- Sitelerden aktarım -------------------------------------------------------
+
+/** Aktarma yer iminin panoya koyduğu metnin ilk satırı. */
+export const IMPORT_HEADER = 'Repertuvarım aktarım';
+
+/**
+ * Aktarma yer iminden gelen metni çözer. Biçim:
+ *   Repertuvarım aktarım
+ *   Şarkı: …
+ *   Sanatçı: …
+ *   Ton: …
+ *   Kaynak: …
+ *   (boş satır)
+ *   akorlar ve sözler (akorlar ayrı satırlarda)
+ * Akorlar [Am] biçimine çevrilmiş olarak döner.
+ * Metin bu biçimde değilse null döner.
+ */
+export function parseImport(text) {
+  const lines = String(text ?? '').replace(/\r\n?/g, '\n').split('\n');
+  const start = lines.findIndex((line) => line.trim() !== '');
+  if (start === -1 || lines[start].trim() !== IMPORT_HEADER) return null;
+
+  const fields = { title: '', artist: '', key: '', source: '' };
+  const names = { 'şarkı': 'title', 'sanatçı': 'artist', ton: 'key', kaynak: 'source' };
+  let index = start + 1;
+  for (; index < lines.length; index += 1) {
+    const match = /^\s*([^:]+):\s*(.*)$/.exec(lines[index]);
+    const name = match && names[match[1].trim().toLocaleLowerCase('tr-TR')];
+    if (!name) break;
+    fields[name] = match[2].trim();
+  }
+  while (index < lines.length && lines[index].trim() === '') index += 1;
+
+  const body = lines.slice(index).join('\n').replace(/ /g, ' ').replace(/\s+$/, '');
+  return { ...fields, content: convertChordSheet(body).text };
 }
