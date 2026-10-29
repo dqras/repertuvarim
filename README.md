@@ -14,11 +14,13 @@ Adres: https://dqras.github.io/repertuvarim/
 | `js/router.js` | Ekranlar arası geçiş (`#/`, `#/sarki/…`, `#/yeni`, `#/durum`) |
 | `js/pwa.js` | Kurulum, güncelleme ve bağlantı durumu |
 | `js/data/repository.js` | Veri erişimi: ekranlar şarkılara yalnızca buradan ulaşır |
+| `js/data/db.js` | Cihazdaki veritabanı (IndexedDB), sürüm yükseltmeleri, kalıcı depolama izni |
+| `js/data/model.js` | Şarkı ve kategori verisinin biçimi ve varsayılanları |
 | `js/data/defaults.js` | İlk kurulumda gelen kategoriler |
-| `js/data/sample-songs.js` | Örnek şarkılar (yalnızca 4. aşama için, uydurma) |
+| `js/data/sample-songs.js` | Örnek şarkılar (uydurma; ilk açılışta bir kez eklenir) |
 | `js/lib/text.js` | Türkçeye uygun arama ve sıralama |
 | `js/lib/dom.js` | Küçük arayüz yardımcıları ve simgeler |
-| `js/views/` | Ekranlar: şarkı listesi, şarkı ekranı, durum |
+| `js/views/` | Ekranlar: şarkı listesi, şarkı ekranı, durum, onay penceresi |
 | `sw.js` | Service worker: dosyaları cihaza kaydeder, uygulamanın internetsiz açılmasını sağlar |
 | `manifest.webmanifest` | Uygulamanın adı, simgesi ve renkleri |
 | `icons/` | Uygulama simgeleri |
@@ -34,4 +36,10 @@ Cihazlar yeni sürümü fark edince uygulamada "Yeni sürüm hazır" bildirimi �
 
 ## Veriler
 
-Şarkılar sunucuya gönderilmez; yalnızca kullanıldığı cihazda saklanır.
+Şarkılar sunucuya gönderilmez; yalnızca kullanıldığı cihazda, tarayıcının veritabanında
+(IndexedDB) saklanır. Uygulama açılışta tarayıcıdan "kalıcı depolama" izni ister; izin
+verilirse cihaz yer açmak için verileri kendiliğinden silmez. Tarayıcının site verileri
+temizlenirse veriler silinir; bu yüzden düzenli yedek alınmalıdır.
+
+Veritabanı yapısı değişeceği zaman `js/data/db.js` içindeki `UPGRADES` listesinin sonuna yeni
+bir adım eklenir; eski adımlar değiştirilmez.

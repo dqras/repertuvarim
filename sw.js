@@ -7,11 +7,11 @@
  * ÖNEMLİ: Uygulamanın herhangi bir dosyası değiştiğinde aşağıdaki VERSION
  * değeri artırılmalıdır. Cihazlar yeni sürümü ancak bu dosya değişince fark eder.
  *
- * Şarkılar burada değil, cihazdaki veritabanında saklanacak. Bu önbellek
- * yalnızca uygulamanın kendi dosyalarını tutar; silinse bile şarkılar etkilenmez.
+ * Şarkılar burada değil, cihazdaki veritabanında (IndexedDB) saklanır. Bu önbellek
+ * yalnızca uygulamanın kendi dosyalarını tutar; yenilense bile şarkılar etkilenmez.
  */
 
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 const CACHE_PREFIX = 'repertuvarim-';
 const CACHE_NAME = `${CACHE_PREFIX}${VERSION}`;
 
@@ -27,10 +27,13 @@ const APP_FILES = [
   './js/router.js',
   './js/lib/dom.js',
   './js/lib/text.js',
+  './js/data/db.js',
   './js/data/defaults.js',
+  './js/data/model.js',
   './js/data/repository.js',
   './js/data/sample-songs.js',
   './js/views/components.js',
+  './js/views/dialog.js',
   './js/views/song-list.js',
   './js/views/song-detail.js',
   './js/views/status.js',
