@@ -14,7 +14,7 @@
   --color-line: #3a3149;           /* ince ayırıcı çizgiler */
   --color-text: #f3eee6;           /* fildişi yazı */
   --color-text-muted: #aba2b8;     /* ikincil yazı */
-  --color-accent: #ffb347;         /* sahne ışığı: akorlar, ton ve ana düğmeler */
+  --color-accent: #ffd43b;         /* sahne ışığı (sarı): akorlar, ton ve ana düğmeler */
   --color-accent-ink: #2a1a00;     /* vurgu renginin üstündeki yazı */
   --color-ok: #74d7a6;
   --color-danger: #ff7a7a;
@@ -75,7 +75,7 @@
   --color-line: #e3e0ea;
   --color-text: #231c2e;
   --color-text-muted: #6b6478;
-  --color-accent: #a35a00;
+  --color-accent: #7a5a00; /* açık zeminde okunabilsin diye koyu sarı */
   --color-accent-ink: #ffffff;
   --color-ok: #1f8a5b;
   --color-danger: #c62f2f;
