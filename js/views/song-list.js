@@ -39,6 +39,7 @@ export function createSongListView(root, { songs, categories, onRemoveSamples })
     notice: root.querySelector('#sample-notice'),
     noticeText: root.querySelector('#sample-notice-text'),
     removeSamples: root.querySelector('#remove-samples'),
+    drafts: root.querySelector('#draft-notices'),
   };
 
   const categoryById = new Map(categories.map((category) => [category.id, category]));
@@ -164,6 +165,24 @@ export function createSongListView(root, { songs, categories, onRemoveSamples })
     sortedCache.clear();
     updateSampleNotice();
     render({ keepShown: true });
+  }
+
+  /**
+   * Kaydedilmemiş taslakları listenin üstünde gösterir; "Devam et" ile forma dönülür.
+   * drafts: [{ title, href }]
+   */
+  function setDrafts(drafts) {
+    ui.drafts.replaceChildren(
+      ...drafts.slice(0, 3).map((draft) =>
+        el(
+          'div',
+          { class: 'notice notice--draft' },
+          el('p', { class: 'notice__text', text: `Kaydedilmemiş değişiklikler var: “${draft.title}”.` }),
+          el('a', { class: 'button button--quiet button--small', href: draft.href }, 'Devam et')
+        )
+      )
+    );
+    ui.drafts.hidden = drafts.length === 0;
   }
 
   function updateSampleNotice() {
@@ -302,7 +321,7 @@ export function createSongListView(root, { songs, categories, onRemoveSamples })
     return entry.row;
   }
 
-  return { setSongs };
+  return { setSongs, setDrafts };
 }
 
 function loadSort() {

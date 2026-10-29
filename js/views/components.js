@@ -14,7 +14,7 @@ let messageTimer = 0;
  * Ekranın üstünde kısa bir bilgi gösterir ve birkaç saniye sonra gizler.
  * tone: 'info' (bilgi) | 'error' (hata)
  */
-export function showMessage(text, { tone = 'info', duration = 5000 } = {}) {
+export function showMessage(text, { tone = 'info', duration = tone === 'error' ? 6000 : 3500 } = {}) {
   const box = document.getElementById('message');
   if (!box) return;
   box.textContent = text;

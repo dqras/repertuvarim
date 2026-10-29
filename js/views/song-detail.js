@@ -1,7 +1,8 @@
 /**
  * Şarkı ekranı.
- * Şarkının temel bilgilerini ve favori düğmesini gösterir. Sözler, akorlar,
- * transpoze ve yazı boyutu düğmeleri 8. aşamada eklenecek.
+ * Şarkının bilgilerini, favori ve düzenle düğmelerini ve kaydedilmiş söz ve
+ * akorları gösterir. Akorların sözlerin üstünde gösterilmesi, transpoze ve yazı
+ * boyutu düğmeleri 8. aşamada eklenecek.
  */
 import { el, icon } from '../lib/dom.js';
 import { categoryTag } from './components.js';
@@ -57,6 +58,13 @@ export function renderSongDetail(root, song, categoryById, { onToggleFavorite } 
     }
   });
 
+  const editLink = el(
+    'a',
+    { class: 'pill-link', id: 'edit-song', href: `#/sarki/${encodeURIComponent(song.id)}/duzenle` },
+    icon('edit'),
+    'Düzenle'
+  );
+
   root.replaceChildren(
     el(
       'article',
@@ -66,7 +74,7 @@ export function renderSongDetail(root, song, categoryById, { onToggleFavorite } 
         { class: 'song-detail__header' },
         el('h1', { class: 'screen-title', tabindex: '-1', text: song.title }),
         el('p', { class: 'song-detail__artist', text: song.artist || 'Sanatçı belirtilmemiş' }),
-        el('div', { class: 'song-detail__actions' }, favoriteButton),
+        el('div', { class: 'song-detail__actions' }, favoriteButton, editLink),
         song.isSample ? el('p', { class: 'song-detail__sample', text: 'Örnek şarkı' }) : null
       ),
       facts.length
@@ -89,10 +97,24 @@ export function renderSongDetail(root, song, categoryById, { onToggleFavorite } 
             'section',
             { class: 'song-detail__notes' },
             el('h2', { class: 'section-title', text: 'Notlarım' }),
-            el('p', { text: song.notes })
+            el('p', { class: 'song-detail__notes-text', text: song.notes })
           )
         : null,
-      el('p', { class: 'placeholder', text: 'Sözler ve akorlar 8. aşamada bu alanda gösterilecek.' })
+      song.content.trim()
+        ? el(
+            'section',
+            { class: 'song-detail__content' },
+            el('h2', { class: 'section-title', text: 'Söz ve akorlar' }),
+            el('p', { class: 'field__hint', text: 'Akorlar 8. aşamada sözlerin üstünde gösterilecek; şimdilik yazdığınız gibi görünüyor.' }),
+            el('pre', { class: 'raw-content', text: song.content })
+          )
+        : el(
+            'p',
+            { class: 'placeholder' },
+            'Bu şarkıya henüz söz ve akor eklenmedi. ',
+            el('a', { href: `#/sarki/${encodeURIComponent(song.id)}/duzenle` }, 'Düzenle'),
+            ' ile ekleyebilirsiniz.'
+          )
     )
   );
 }
