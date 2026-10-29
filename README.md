@@ -11,7 +11,7 @@ Adres: https://dqras.github.io/repertuvarim/
 | `index.html` | Uygulamanın sayfası ve ekranların iskeleti |
 | `css/styles.css` | Görünüm: renkler, yazılar, yerleşim |
 | `js/app.js` | Başlangıç noktası; verileri yükler, ekranları hazırlar |
-| `js/router.js` | Ekranlar arası geçiş (`#/`, `#/sarki/…`, `#/yeni`, `#/durum`) |
+| `js/router.js` | Ekranlar arası geçiş (`#/`, `#/sarki/…`, `#/sarki/…/duzenle`, `#/yeni`, `#/durum`) |
 | `js/pwa.js` | Kurulum, güncelleme ve bağlantı durumu |
 | `js/data/repository.js` | Veri erişimi: ekranlar şarkılara yalnızca buradan ulaşır |
 | `js/data/db.js` | Cihazdaki veritabanı (IndexedDB), sürüm yükseltmeleri, kalıcı depolama izni |
@@ -20,7 +20,7 @@ Adres: https://dqras.github.io/repertuvarim/
 | `js/data/sample-songs.js` | Örnek şarkılar (uydurma; ilk açılışta bir kez eklenir) |
 | `js/lib/text.js` | Türkçeye uygun arama ve sıralama |
 | `js/lib/dom.js` | Küçük arayüz yardımcıları ve simgeler |
-| `js/views/` | Ekranlar: şarkı listesi, şarkı ekranı, durum, onay penceresi |
+| `js/views/` | Ekranlar: şarkı listesi, şarkı ekranı, şarkı formu (ekleme/düzenleme), durum, onay penceresi |
 | `sw.js` | Service worker: dosyaları cihaza kaydeder, uygulamanın internetsiz açılmasını sağlar |
 | `manifest.webmanifest` | Uygulamanın adı, simgesi ve renkleri |
 | `icons/` | Uygulama simgeleri |

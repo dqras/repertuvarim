@@ -11,7 +11,7 @@
  * yalnızca uygulamanın kendi dosyalarını tutar; yenilense bile şarkılar etkilenmez.
  */
 
-const VERSION = '0.5.0';
+const VERSION = '0.6.0';
 const CACHE_PREFIX = 'repertuvarim-';
 const CACHE_NAME = `${CACHE_PREFIX}${VERSION}`;
 
@@ -36,6 +36,7 @@ const APP_FILES = [
   './js/views/dialog.js',
   './js/views/song-list.js',
   './js/views/song-detail.js',
+  './js/views/song-editor.js',
   './js/views/status.js',
   './icons/icon.svg',
   './icons/favicon-32.png',
