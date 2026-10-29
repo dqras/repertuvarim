@@ -2,7 +2,17 @@
 // Çalıştırmak için (Node.js kurulu bir bilgisayarda, proje klasöründe): node --test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeSong, normalizeCategory } from '../js/data/model.js';
+import {
+  normalizeSong,
+  normalizeCategory,
+  normalizeKeyName,
+  findBracketProblemLine,
+  validateSongForm,
+  emptySongForm,
+  songToForm,
+  sameForm,
+  createId,
+} from '../js/data/model.js';
 
 test('eksik alanlar güvenli varsayılanlarla dolar', () => {
   const song = normalizeSong({ id: 7, title: '  Liman ', createdAt: 1000 });
@@ -49,6 +59,65 @@ test('doğru değerler olduğu gibi kalır', () => {
     createdAt: 10, updatedAt: 20,
   };
   assert.deepEqual(normalizeSong(raw), raw);
+});
+
+test('ton yazımı düzenlenir', () => {
+  assert.equal(normalizeKeyName('am'), 'Am');
+  assert.equal(normalizeKeyName(' F#m '), 'F#m');
+  assert.equal(normalizeKeyName('f♯m'), 'F#m');
+  assert.equal(normalizeKeyName('Bb'), 'Bb');
+  assert.equal(normalizeKeyName('b♭'), 'Bb');
+  assert.equal(normalizeKeyName('Cmin'), 'Cm');
+  assert.equal(normalizeKeyName('E-'), 'Em');
+  assert.equal(normalizeKeyName(''), '');
+  assert.equal(normalizeKeyName('Hicaz'), null);
+  assert.equal(normalizeKeyName('H'), null);
+  assert.equal(normalizeKeyName('Am7'), null);
+});
+
+test('akor parantezi sorunları satır numarasıyla bulunur', () => {
+  assert.equal(findBracketProblemLine('[Am]Bu gece\n[F]Sensiz'), 0);
+  assert.equal(findBracketProblemLine('[Am]Bu gece\n[F Sensiz'), 2);
+  assert.equal(findBracketProblemLine('Am]Bu gece'), 1);
+  assert.equal(findBracketProblemLine('[[Am]]'), 1);
+  assert.equal(findBracketProblemLine('Akorsuz söz'), 0);
+});
+
+test('zorunlu alanlar boşsa anlaşılır mesaj verilir', () => {
+  const { valid, errors } = validateSongForm(emptySongForm());
+  assert.equal(valid, false);
+  assert.equal(errors.title, 'Şarkı adını yazın.');
+  assert.equal(errors.content, 'Sözleri ve akorları yazın.');
+});
+
+test('hatalı ton, tempo ve parantez yakalanır', () => {
+  const { errors } = validateSongForm({ ...emptySongForm(), title: 'X', content: 'a\n[Am b', key: 'Hicaz', bpm: '500' });
+  assert.match(errors.content, /^2\. satırda/);
+  assert.ok(errors.key);
+  assert.ok(errors.bpm);
+});
+
+test('geçerli form düzenlenmiş değerleri verir; sözlerdeki boşluklar korunur', () => {
+  const content = '[Am]Bu gece   yine aklımdasın\r\n\r\n[F]Sensiz  geçen günler  ';
+  const { valid, value } = validateSongForm({
+    title: '  Yeni Şarkı ', artist: ' Ben ', key: 'am', content, categoryIds: ['pop', 'pop', 'rock'],
+    capo: '3', bpm: '92', notes: 'not', favorite: true,
+  });
+  assert.equal(valid, true);
+  assert.deepEqual(value, {
+    title: 'Yeni Şarkı', artist: 'Ben', key: 'Am',
+    content: '[Am]Bu gece   yine aklımdasın\n\n[F]Sensiz  geçen günler  ',
+    categoryIds: ['pop', 'rock'], capo: 3, bpm: 92, notes: 'not', favorite: true,
+  });
+});
+
+test('form karşılaştırması ve şarkıdan form', () => {
+  const song = normalizeSong({ id: 's', title: 'A', content: '[C]x', categoryIds: ['pop'], bpm: 90, createdAt: 1 });
+  const form = songToForm(song);
+  assert.equal(form.bpm, '90');
+  assert.equal(sameForm(form, { ...form, categoryIds: ['pop'] }), true);
+  assert.equal(sameForm(form, { ...form, title: 'B' }), false);
+  assert.notEqual(createId(), createId());
 });
 
 test('kategori varsayılanları', () => {
