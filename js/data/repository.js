@@ -108,11 +108,27 @@ export async function updateSong(id, fields) {
 
 /** Şarkıyı (ve varsa taslağını) siler. */
 export async function deleteSong(id) {
-  await transact(await init(), ['songs', 'drafts'], 'readwrite', ({ songs, drafts }) => {
+  await transact(await init(), ['songs', 'drafts', 'settings'], 'readwrite', ({ songs, drafts, settings }) => {
     songs.delete(id);
     drafts.delete(id);
+    settings.delete(`transpose:${id}`);
   });
   notifyChange();
+}
+
+// --- Ayarlar: yazı boyutu, şarkı başına transpoze, ekranı açık tutma ------------
+
+/** Bir ayarı okur; kayıtlı değilse fallback döner. */
+export async function getSetting(key, fallback = null) {
+  const row = await transact(await init(), 'settings', 'readonly', ({ settings }) => result(settings.get(key)));
+  return row ? row.value : fallback;
+}
+
+/** Bir ayarı kaydeder. value null ise ayar silinir. */
+export async function setSetting(key, value) {
+  await transact(await init(), 'settings', 'readwrite', ({ settings }) =>
+    result(value === null ? settings.delete(key) : settings.put({ key, value }))
+  );
 }
 
 // --- Taslaklar: kaydedilmemiş form içerikleri --------------------------------
