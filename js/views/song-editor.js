@@ -4,6 +4,8 @@
  * - Yazdıklarınız kısa aralıklarla taslak olarak kaydedilir; uygulama yanlışlıkla
  *   kapanırsa bir sonraki açılışta kaldığınız yerden devam edersiniz.
  * - "Kaydet" alanları denetler; eksik ya da hatalı alanın altında ne yapılacağı yazar.
+ * - Akorları ayrı satırlarda olan bir metin yapıştırılırsa tek dokunuşla [Am] biçimine
+ *   çevrilebilir (Geri al ile eski hâline döner). Tanınmayan akorlar için uyarı çıkar.
  * - Düzenlerken en altta "Şarkıyı sil" bulunur ve önce onay ister.
  *
  * Bu ekran veritabanını doğrudan bilmez; kaydetme, silme ve taslak işlerini
@@ -17,9 +19,11 @@ import {
   songToForm,
   validateSongForm,
 } from '../data/model.js';
+import { analyzeChords, convertChordSheet, countChordLines } from '../music/song-text.js';
 import { confirmDialog } from './dialog.js';
 
 const DRAFT_DELAY_MS = 800; // yazmayı bıraktıktan bu kadar sonra taslak kaydedilir
+const HELPER_DELAY_MS = 250; // söz alanındaki akor denetimi bu kadar sonra yapılır
 const KEY_SUGGESTIONS = [
   'C', 'C#', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B',
   'Cm', 'C#m', 'Dm', 'D#m', 'Ebm', 'Em', 'Fm', 'F#m', 'Gm', 'G#m', 'Am', 'Bbm', 'Bm',
@@ -131,6 +135,8 @@ export function createSongEditor(root, { categories, actions }) {
           )
         )
       ),
+      sheetNotice: el('div', { class: 'notice notice--sheet', id: 'ed-sheet-notice', 'aria-live': 'polite', hidden: true }),
+      chordHint: el('p', { class: 'field__warning', id: 'ed-chord-hint', 'aria-live': 'polite', hidden: true }),
       status: el('p', { class: 'editor__status', 'aria-live': 'polite' }),
       save: el('button', { type: 'submit', class: 'button button--primary' }, 'Kaydet'),
       cancel: el('button', { type: 'button', class: 'button button--quiet' }, 'Vazgeç'),
@@ -173,7 +179,9 @@ export function createSongEditor(root, { categories, actions }) {
       field('ed-content', 'Söz ve akorlar', ui.content, {
         required: true,
         hint: 'Akoru, sözün çalındığı yere köşeli parantezle yazın: [Am]Bu gece yine aklımdasın',
-        tools: el('div', { class: 'editor__tools' }, chordButton),
+        // Çevirme önerisi metin kutusunun üstünde: uzun bir şarkı yapıştırılınca da görünür.
+        tools: [el('div', { class: 'editor__tools' }, chordButton), ui.sheetNotice],
+        extra: [ui.chordHint],
       }),
       el(
         'fieldset',
@@ -200,6 +208,8 @@ export function createSongEditor(root, { categories, actions }) {
       autosize(ui.notes);
     });
     setStatus(restoredAt ? 'restored' : 'clean');
+    sheetUndo = null;
+    refreshContentHelpers();
 
     // --- Olaylar ---
     formElement.addEventListener('input', onEdit);
@@ -253,6 +263,68 @@ export function createSongEditor(root, { categories, actions }) {
     });
   }
 
+  // --- Söz alanı yardımcıları: akor satırı çevirme ve tanınmayan akorlar -----------
+
+  let sheetUndo = null; // { before, after, converted } — son çevirmeyi geri almak için
+  let helperTimer = 0;
+
+  function refreshContentHelpers() {
+    clearTimeout(helperTimer);
+    const content = ui.content.value;
+
+    if (sheetUndo && content !== sheetUndo.after) sheetUndo = null;
+    const chordLines = sheetUndo ? 0 : countChordLines(content);
+    if (sheetUndo) {
+      ui.sheetNotice.replaceChildren(
+        el('p', { class: 'notice__text', text: `${sheetUndo.converted} akor satırı sözlerin içine yerleştirildi.` }),
+        el('button', { type: 'button', class: 'button button--quiet button--small', id: 'ed-sheet-undo', onclick: undoSheet }, 'Geri al')
+      );
+    } else if (chordLines > 0) {
+      ui.sheetNotice.replaceChildren(
+        el('p', {
+          class: 'notice__text',
+          text: `Akorlar ayrı satırlarda görünüyor (${chordLines} satır). Sözlerin içine yerleştirilsin mi?`,
+        }),
+        el('button', { type: 'button', class: 'button button--primary button--small', id: 'ed-sheet-convert', onclick: convertSheet }, 'Akorları yerleştir')
+      );
+    }
+    ui.sheetNotice.hidden = !sheetUndo && chordLines === 0;
+
+    const { unknown, emptyCount } = analyzeChords(content);
+    const parts = [];
+    if (unknown.length) {
+      const names = unknown.slice(0, 6).join(', ') + (unknown.length > 6 ? ' …' : '');
+      parts.push(`Tanınmayan akor: ${names}. Ton değiştirilirken bunlar olduğu gibi kalır.`);
+    }
+    if (emptyCount) parts.push('Boş akor parantezi var: [ ]. İçine akorun adını yazın ya da silin.');
+    ui.chordHint.textContent = parts.join(' ');
+    ui.chordHint.hidden = parts.length === 0;
+  }
+
+  function setContent(value) {
+    ui.content.value = value;
+    ui.content.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function convertSheet() {
+    const before = ui.content.value;
+    const { text, converted } = convertChordSheet(before);
+    if (!converted) return;
+    sheetUndo = { before, after: text, converted };
+    setContent(text);
+    refreshContentHelpers();
+    root.querySelector('#ed-sheet-undo')?.focus({ preventScroll: true });
+  }
+
+  function undoSheet() {
+    if (!sheetUndo) return;
+    const { before } = sheetUndo;
+    sheetUndo = null;
+    setContent(before);
+    refreshContentHelpers();
+    ui.content.focus({ preventScroll: true });
+  }
+
   function setFavorite(favorite) {
     ui.favorite.setAttribute('aria-pressed', String(favorite));
     ui.favorite.replaceChildren(icon(favorite ? 'star' : 'starOutline'), favorite ? 'Favorilerde' : 'Favorilere ekle');
@@ -278,6 +350,10 @@ export function createSongEditor(root, { categories, actions }) {
     if (!session) return;
     if (event?.target?.id) clearError(event.target.id);
     if (event?.target === ui.content || event?.target === ui.notes) autosize(event.target);
+    if (event?.target === ui.content) {
+      clearTimeout(helperTimer);
+      helperTimer = setTimeout(refreshContentHelpers, HELPER_DELAY_MS);
+    }
     clearTimeout(session.timer);
     setStatus('pending');
     session.timer = setTimeout(saveDraftNow, DRAFT_DELAY_MS);
@@ -413,8 +489,8 @@ function textInput(id, value, attributes = {}) {
   return input;
 }
 
-/** Etiket, isteğe bağlı açıklama, alanın kendisi ve hata yeri. */
-function field(id, label, control, { required = false, hint = '', tools = null } = {}) {
+/** Etiket, isteğe bağlı açıklama, alanın kendisi, ek bilgiler ve hata yeri. */
+function field(id, label, control, { required = false, hint = '', tools = null, extra = [] } = {}) {
   const described = [hint ? `${id}-hint` : null, `${id}-error`].filter(Boolean).join(' ');
   control.setAttribute('aria-describedby', described);
   if (required) control.setAttribute('aria-required', 'true');
@@ -425,6 +501,7 @@ function field(id, label, control, { required = false, hint = '', tools = null }
     hint ? el('p', { class: 'field__hint', id: `${id}-hint`, text: hint }) : null,
     tools,
     control,
+    extra,
     el('p', { class: 'field__error', id: `${id}-error`, hidden: true })
   );
 }
