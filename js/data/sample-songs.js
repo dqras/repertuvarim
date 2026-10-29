@@ -1,12 +1,9 @@
 /**
- * ÖRNEK VERİLER — yalnızca 4. aşama için.
- * Şarkı adları ve sanatçılar uydurmadır; listenin görünümünü, aramayı ve
- * sıralamayı denemek için hazırlanmıştır. Gerçek kayıt 5. aşamada gelecek.
- *
- * Bir şarkının alanları:
- *   id, title (ad), artist (sanatçı), key (orijinal ton), categoryIds (kategoriler),
- *   capo, bpm (tempo), notes (kişisel notlar), favorite (favori mi),
- *   content (söz ve akorlar), createdAt / updatedAt (eklenme / değişme zamanı)
+ * ÖRNEK ŞARKILAR
+ * Şarkı adları ve sanatçılar uydurmadır. Veritabanı ilk kez oluşturulurken bir kez
+ * eklenir ("örnek" olarak işaretlenir) ve kullanıcı "Örnek şarkıları kaldır"
+ * düğmesiyle hepsini silebilir. Silindikten sonra bir daha eklenmez.
+ * Alanların anlamı için bkz. model.js.
  */
 
 const DAY = 24 * 60 * 60 * 1000;
