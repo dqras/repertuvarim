@@ -35,6 +35,7 @@ const ICONS = {
   back: '<path d="M15 18l-6-6 6-6"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.6v.1"/>',
   star: '<path d="M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.7L12 16.6l-5.1 2.7 1-5.7-4.1-4 5.7-.8z" fill="currentColor" stroke="none"/>',
+  starOutline: '<path d="M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.7L12 16.6l-5.1 2.7 1-5.7-4.1-4 5.7-.8z"/>',
 };
 
 /** Ekran okuyucuların atladığı bir simge öğesi döndürür. */

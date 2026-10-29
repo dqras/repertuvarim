@@ -29,6 +29,19 @@ export function foldForSearch(text) {
     .trim();
 }
 
+/** Bayt cinsinden büyüklüğü okunur hâle getirir: 86016 → "84 KB". */
+export function formatBytes(bytes) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = Math.max(0, Number(bytes) || 0);
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const digits = unit > 0 && value < 10 ? 1 : 0;
+  return `${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: digits }).format(value)} ${units[unit]}`;
+}
+
 /**
  * Aranan kelimelerin hepsi metinde geçiyorsa true döner.
  * İki değer de önceden foldForSearch ile sadeleştirilmiş olmalıdır.
