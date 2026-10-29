@@ -17,6 +17,7 @@
 let depth = 0;
 let started = false;
 let replacing = false;
+let lastPath = null; // bir önceki ekranın yolu
 
 /**
  * routes: [{ pattern: /^\/sarki\/(?<id>[^/]+)$/, show: (params) => {...} }, ...]
@@ -44,11 +45,20 @@ function rememberDepth() {
   if (state && typeof state.depth === 'number') {
     depth = state.depth; // geri/ileri ile dönülen ya da yenilenen bir kayıt
   } else {
-    if (started && !replacing) depth += 1; // yeni açılan ekran
-    history.replaceState({ ...(state ?? {}), depth }, '');
+    const isNew = started && !replacing;
+    if (isNew) depth += 1; // yeni açılan ekran
+    // "from": bu ekrana hangi ekrandan gelindi (geri dönülecek yer orası mı diye bakmak için)
+    const from = isNew ? lastPath : state?.from ?? null;
+    history.replaceState({ ...(state ?? {}), depth, from }, '');
   }
   started = true;
   replacing = false;
+  lastPath = currentPath();
+}
+
+/** Tarayıcı geçmişinde bir önceki ekranın yolu (biliniyorsa). */
+export function previousPath() {
+  return history.state?.from ?? null;
 }
 
 /** Geride uygulamaya ait bir ekran var mı? */
