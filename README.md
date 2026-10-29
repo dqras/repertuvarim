@@ -11,7 +11,7 @@ Adres: https://dqras.github.io/repertuvarim/
 | `index.html` | Uygulamanın sayfası ve ekranların iskeleti |
 | `css/styles.css` | Görünüm: renkler, yazılar, yerleşim |
 | `js/app.js` | Başlangıç noktası; verileri yükler, ekranları hazırlar |
-| `js/router.js` | Ekranlar arası geçiş (`#/`, `#/sarki/…`, `#/sarki/…/duzenle`, `#/yeni`, `#/durum`) |
+| `js/router.js` | Ekranlar arası geçiş (`#/`, `#/sarki/…`, `#/sarki/…/duzenle`, `#/yeni`, `#/aktar`, `#/durum`) |
 | `js/pwa.js` | Kurulum, güncelleme ve bağlantı durumu |
 | `js/data/repository.js` | Veri erişimi: ekranlar şarkılara yalnızca buradan ulaşır |
 | `js/data/db.js` | Cihazdaki veritabanı (IndexedDB), sürüm yükseltmeleri, kalıcı depolama izni |
@@ -20,6 +20,8 @@ Adres: https://dqras.github.io/repertuvarim/
 | `js/data/sample-songs.js` | Örnek şarkılar (uydurma; ilk açılışta bir kez eklenir) |
 | `js/lib/text.js` | Türkçeye uygun arama ve sıralama |
 | `js/music/chords.js` | Transpoze motoru: akorları tanıma, yarım ses taşıma, diyez/bemol, tonlar |
+| `js/music/render.js` | Şarkıyı çizer: akorlar sözlerin üstünde, kelimeler bölünmeden |
+| `js/music/bookmarklet.js` | repertuarim.com / akorlar.com'dan aktarma yer imi |
 | `js/music/song-text.js` | Şarkı metni: [Am] akorlarını bulma, bütün şarkıyı taşıma, ayrı satırdaki akorları [Am] biçimine çevirme |
 | `js/lib/dom.js` | Küçük arayüz yardımcıları ve simgeler |
 | `js/views/` | Ekranlar: şarkı listesi, şarkı ekranı, şarkı formu (ekleme/düzenleme), durum, onay penceresi, ana ekrana ekleme |
