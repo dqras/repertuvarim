@@ -4,6 +4,8 @@
  * - Yazdıklarınız kısa aralıklarla taslak olarak kaydedilir; uygulama yanlışlıkla
  *   kapanırsa bir sonraki açılışta kaldığınız yerden devam edersiniz.
  * - "Kaydet" alanları denetler; eksik ya da hatalı alanın altında ne yapılacağı yazar.
+ * - "Panodan aktar": repertuarim.com / akorlar.com'dan "Repertuvarım'a aktar" yer imiyle
+ *   kopyalanan şarkı; adı, sanatçısı, tonu ve akorlarıyla forma yerleşir (bkz. #/aktar).
  * - Akorları ayrı satırlarda olan bir metin yapıştırılırsa tek dokunuşla [Am] biçimine
  *   çevrilebilir (Geri al ile eski hâline döner). Tanınmayan akorlar için uyarı çıkar.
  * - Düzenlerken en altta "Şarkıyı sil" bulunur ve önce onay ister.
@@ -19,8 +21,10 @@ import {
   songToForm,
   validateSongForm,
 } from '../data/model.js';
-import { analyzeChords, convertChordSheet, countChordLines } from '../music/song-text.js';
+import { analyzeChords, convertChordSheet, countChordLines, IMPORT_HEADER, parseImport } from '../music/song-text.js';
+import { normalizeKeyName } from '../data/model.js';
 import { confirmDialog } from './dialog.js';
+import { showMessage } from './components.js';
 
 const DRAFT_DELAY_MS = 800; // yazmayı bıraktıktan bu kadar sonra taslak kaydedilir
 const HELPER_DELAY_MS = 250; // söz alanındaki akor denetimi bu kadar sonra yapılır
@@ -152,6 +156,17 @@ export function createSongEditor(root, { categories, actions }) {
       'Akor ekle'
     );
 
+    const importBar = isEdit
+      ? null
+      : el(
+          'div',
+          { class: 'notice notice--import', id: 'ed-import' },
+          el('p', { class: 'notice__text', text: 'repertuarim.com ya da akorlar.com’dan mı ekliyorsunuz?' }),
+          el('div', { class: 'notice__actions' },
+            el('a', { class: 'button button--quiet button--small', href: '#/aktar' }, 'Nasıl?'),
+            el('button', { type: 'button', class: 'button button--primary button--small', id: 'ed-import-clipboard', onclick: importFromClipboard }, 'Panodan aktar'))
+        );
+
     const restoredNotice = restoredAt
       ? el(
           'div',
@@ -165,6 +180,7 @@ export function createSongEditor(root, { categories, actions }) {
       'form',
       { class: 'editor', novalidate: true },
       el('h1', { class: 'screen-title', tabindex: '-1', text: title }),
+      importBar,
       restoredNotice,
       field('ed-title', 'Şarkı adı', ui.title, { required: true }),
       field('ed-artist', 'Sanatçı', ui.artist),
@@ -209,6 +225,7 @@ export function createSongEditor(root, { categories, actions }) {
     });
     setStatus(restoredAt ? 'restored' : 'clean');
     sheetUndo = null;
+    importUndo = null;
     refreshContentHelpers();
 
     // --- Olaylar ---
@@ -270,7 +287,26 @@ export function createSongEditor(root, { categories, actions }) {
 
   function refreshContentHelpers() {
     clearTimeout(helperTimer);
+    // Aktarım metni doğrudan söz kutusuna yapıştırıldıysa alanlar doldurulur.
+    if (ui.content.value.trimStart().startsWith(IMPORT_HEADER)) {
+      const data = parseImport(ui.content.value);
+      if (data) {
+        applyImport(data, { previousContent: '' });
+        return;
+      }
+    }
     const content = ui.content.value;
+
+    if (importUndo && content === importUndo.after) {
+      ui.sheetNotice.replaceChildren(
+        el('p', { class: 'notice__text', text: `“${importUndo.title}” aktarıldı: şarkı adı, sanatçı, ton ve akorlar dolduruldu. Kontrol edip Kaydet’e basın.` }),
+        el('button', { type: 'button', class: 'button button--quiet button--small', id: 'ed-import-undo', onclick: undoImport }, 'Geri al')
+      );
+      ui.sheetNotice.hidden = false;
+      refreshChordHint(content);
+      return;
+    }
+    importUndo = null;
 
     if (sheetUndo && content !== sheetUndo.after) sheetUndo = null;
     const chordLines = sheetUndo ? 0 : countChordLines(content);
@@ -289,7 +325,10 @@ export function createSongEditor(root, { categories, actions }) {
       );
     }
     ui.sheetNotice.hidden = !sheetUndo && chordLines === 0;
+    refreshChordHint(content);
+  }
 
+  function refreshChordHint(content) {
     const { unknown, emptyCount } = analyzeChords(content);
     const parts = [];
     if (unknown.length) {
@@ -299,6 +338,68 @@ export function createSongEditor(root, { categories, actions }) {
     if (emptyCount) parts.push('Boş akor parantezi var: [ ]. İçine akorun adını yazın ya da silin.');
     ui.chordHint.textContent = parts.join(' ');
     ui.chordHint.hidden = parts.length === 0;
+  }
+
+  // --- Sitelerden aktarım ------------------------------------------------------------
+
+  let importUndo = null; // { before: önceki form, after: aktarılan söz metni, title }
+
+  async function importFromClipboard() {
+    let text = '';
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      showMessage('Panoya erişilemedi. Kopyaladığınız metni “Söz ve akorlar” kutusuna yapıştırın.', { tone: 'error', duration: 7000 });
+      ui.content.focus();
+      return;
+    }
+    const data = parseImport(text);
+    if (data) {
+      applyImport(data);
+      ui.title.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+    if (text.trim() && !ui.content.value.trim()) {
+      setContent(text.replace(/\r\n?/g, '\n'));
+      refreshContentHelpers();
+      showMessage('Panodaki metin söz kutusuna yapıştırıldı. Şarkı adını ve sanatçıyı yazın.');
+      return;
+    }
+    showMessage(
+      text.trim()
+        ? 'Panodaki metin bir aktarım değil. Önce sitede “Repertuvarım’a aktar” yer imine dokunun.'
+        : 'Pano boş. Önce sitede “Repertuvarım’a aktar” yer imine dokunun.',
+      { tone: 'error', duration: 7000 }
+    );
+  }
+
+  /** Aktarılan şarkıyı forma yerleştirir; "Geri al" ile önceki hâline döner. */
+  function applyImport(data, { previousContent } = {}) {
+    const before = readForm();
+    if (previousContent !== undefined) before.content = previousContent;
+    if (data.title) ui.title.value = data.title;
+    if (data.artist) ui.artist.value = data.artist;
+    const key = normalizeKeyName(data.key);
+    if (key) ui.key.value = key;
+    if (data.source && !ui.notes.value.trim()) ui.notes.value = `Kaynak: ${data.source}`;
+    sheetUndo = null;
+    importUndo = { before, after: data.content, title: data.title || 'Şarkı' };
+    setContent(data.content);
+    for (const id of ['ed-title', 'ed-content', 'ed-key']) clearError(id);
+    autosize(ui.notes);
+    refreshContentHelpers();
+  }
+
+  function undoImport() {
+    if (!importUndo) return;
+    const { before } = importUndo;
+    importUndo = null;
+    ui.title.value = before.title;
+    ui.artist.value = before.artist;
+    ui.key.value = before.key;
+    ui.notes.value = before.notes;
+    setContent(before.content);
+    refreshContentHelpers();
   }
 
   function setContent(value) {
