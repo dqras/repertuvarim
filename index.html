@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="tr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Repertuvarım</title>
+  <meta name="description" content="Kişisel şarkı repertuvarı ve akor uygulaması. İnternetsiz çalışır.">
+  <meta name="theme-color" content="#1a1523">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-title" content="Repertuvarım">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__inner">
+      <img class="topbar__logo" src="icons/icon.svg" alt="" width="28" height="28">
+      <span class="topbar__name">Repertuvarım</span>
+    </div>
+  </header>
+
+  <main class="page" id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <!-- Akorlar sözlerin üstünde: uygulamanın şarkı ekranının küçük bir önizlemesi. -->
+      <h1 class="chordline" id="hero-title" aria-label="Hoş geldiniz">
+        <span class="chordline__seg" aria-hidden="true"><span class="chordline__chord">C</span><span class="chordline__lyric">Hoş gel</span></span><span class="chordline__seg" aria-hidden="true"><span class="chordline__chord">G</span><span class="chordline__lyric">diniz</span></span>
+      </h1>
+      <p class="lead">Uygulama çalışıyor. Şarkı listeniz bir sonraki aşamada bu ekrana gelecek.</p>
+      <button class="button button--primary" id="install-button" type="button" hidden>Uygulama olarak yükle</button>
+    </section>
+
+    <section class="status" aria-labelledby="status-title">
+      <h2 class="section-title" id="status-title">Durum</h2>
+      <dl class="status__list">
+        <div class="status__row">
+          <dt>Uygulama</dt>
+          <dd><span class="state" id="state-app" data-tone="neutral">Yükleniyor…</span></dd>
+        </div>
+        <div class="status__row">
+          <dt>İnternetsiz kullanım</dt>
+          <dd><span class="state" id="state-offline" data-tone="neutral">Hazırlanıyor…</span></dd>
+        </div>
+        <div class="status__row">
+          <dt>İnternet bağlantısı</dt>
+          <dd><span class="state" id="state-network" data-tone="neutral">Kontrol ediliyor…</span></dd>
+        </div>
+        <div class="status__row">
+          <dt>Sürüm</dt>
+          <dd><span class="version" id="state-version">—</span></dd>
+        </div>
+      </dl>
+    </section>
+  </main>
+
+  <div class="toast" id="update-toast" role="status" aria-live="polite" hidden>
+    <span>Yeni sürüm hazır.</span>
+    <button class="button button--primary" id="update-button" type="button">Güncelle</button>
+  </div>
+
+  <noscript>
+    <p class="page">Bu uygulamanın çalışması için tarayıcıda JavaScript açık olmalıdır.</p>
+  </noscript>
+</body>
+</html>
