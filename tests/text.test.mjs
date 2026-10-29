@@ -2,7 +2,7 @@
 // Çalıştırmak için (Node.js kurulu bir bilgisayarda, proje klasöründe): node --test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareText, foldForSearch, matchesQuery } from '../js/lib/text.js';
+import { compareText, foldForSearch, formatBytes, matchesQuery } from '../js/lib/text.js';
 
 test('arama metni Türkçe harflerden bağımsızdır', () => {
   assert.equal(foldForSearch('Rüzgâr'), 'ruzgar');
@@ -35,6 +35,15 @@ test('sıralama Türk alfabesine uyar', () => {
   const words = ['Üşüyen', 'Çay', 'Ilık', 'İstanbul', 'Şehrin', 'Sahilde', 'Özlem', 'Ayrılık', 'Gülümse', 'Gece', 'Yağmur', 'Kırık'];
   const expected = ['Ayrılık', 'Çay', 'Gece', 'Gülümse', 'Ilık', 'İstanbul', 'Kırık', 'Özlem', 'Sahilde', 'Şehrin', 'Üşüyen', 'Yağmur'];
   assert.deepEqual([...words].sort(compareText), expected);
+});
+
+test('alan büyüklüğü okunur biçimde yazılır', () => {
+  assert.equal(formatBytes(0), '0 B');
+  assert.equal(formatBytes(512), '512 B');
+  assert.equal(formatBytes(86016), '84 KB');
+  assert.equal(formatBytes(1536), '1,5 KB');
+  assert.equal(formatBytes(5 * 1024 ** 3), '5 GB');
+  assert.equal(formatBytes(null), '0 B');
 });
 
 test('sıralamada büyük/küçük harf fark etmez', () => {
