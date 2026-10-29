@@ -1,13 +1,17 @@
 /**
  * Şarkı ekranı.
- * 4. aşamada şarkının temel bilgilerini gösterir. Sözler, akorlar, transpoze ve
- * yazı boyutu düğmeleri 8. aşamada eklenecek.
+ * Şarkının temel bilgilerini ve favori düğmesini gösterir. Sözler, akorlar,
+ * transpoze ve yazı boyutu düğmeleri 8. aşamada eklenecek.
  */
 import { el, icon } from '../lib/dom.js';
 import { categoryTag } from './components.js';
 
-/** Şarkıyı root içine çizer. Şarkı yoksa anlaşılır bir mesaj gösterir. */
-export function renderSongDetail(root, song, categoryById) {
+/**
+ * Şarkıyı root içine çizer. Şarkı yoksa anlaşılır bir mesaj gösterir.
+ * onToggleFavorite(song): favori düğmesine basılınca çağrılır; güncel şarkıyı
+ * döndürmeli, kaydedilemezse hata fırlatmalıdır.
+ */
+export function renderSongDetail(root, song, categoryById, { onToggleFavorite } = {}) {
   if (!song) {
     root.replaceChildren(
       el(
@@ -29,6 +33,30 @@ export function renderSongDetail(root, song, categoryById) {
 
   const songCategories = song.categoryIds.map((id) => categoryById.get(id)).filter(Boolean);
 
+  const favoriteButton = el('button', { type: 'button', class: 'fav-toggle' });
+  const showFavorite = (favorite) => {
+    favoriteButton.setAttribute('aria-pressed', String(favorite));
+    favoriteButton.replaceChildren(
+      icon(favorite ? 'star' : 'starOutline'),
+      favorite ? 'Favorilerde' : 'Favorilere ekle'
+    );
+  };
+  showFavorite(song.favorite);
+  favoriteButton.addEventListener('click', async () => {
+    favoriteButton.disabled = true;
+    try {
+      const updated = await onToggleFavorite?.(song);
+      if (updated) {
+        song.favorite = updated.favorite;
+        showFavorite(song.favorite);
+      }
+    } catch {
+      // Hata mesajını uygulama gösterir; düğme eski hâlinde kalır.
+    } finally {
+      favoriteButton.disabled = false;
+    }
+  });
+
   root.replaceChildren(
     el(
       'article',
@@ -38,7 +66,8 @@ export function renderSongDetail(root, song, categoryById) {
         { class: 'song-detail__header' },
         el('h1', { class: 'screen-title', tabindex: '-1', text: song.title }),
         el('p', { class: 'song-detail__artist', text: song.artist || 'Sanatçı belirtilmemiş' }),
-        song.favorite ? el('p', { class: 'song-detail__fav' }, icon('star'), 'Favorilerde') : null
+        el('div', { class: 'song-detail__actions' }, favoriteButton),
+        song.isSample ? el('p', { class: 'song-detail__sample', text: 'Örnek şarkı' }) : null
       ),
       facts.length
         ? el(

@@ -23,8 +23,10 @@ const PRELOAD_MARGIN = '800px 0px'; // listenin sonuna bu kadar yaklaşınca dev
 
 /**
  * root: #view-list bölümü. songs ve categories: veri katmanından gelen listeler.
+ * onRemoveSamples(): "Örnek şarkıları kaldır" düğmesine basılınca çağrılır.
+ * Döndürdüğü setSongs(songs), kayıtlı şarkılar değişince listeyi yeniler.
  */
-export function createSongListView(root, { songs, categories, usesSampleData }) {
+export function createSongListView(root, { songs, categories, onRemoveSamples }) {
   const ui = {
     search: root.querySelector('#search'),
     clearSearch: root.querySelector('#search-clear'),
@@ -35,16 +37,16 @@ export function createSongListView(root, { songs, categories, usesSampleData }) 
     more: root.querySelector('#list-more'),
     empty: root.querySelector('#list-empty'),
     notice: root.querySelector('#sample-notice'),
+    noticeText: root.querySelector('#sample-notice-text'),
+    removeSamples: root.querySelector('#remove-samples'),
   };
 
   const categoryById = new Map(categories.map((category) => [category.id, category]));
 
   // Her şarkı için arama metni bir kez hazırlanır; satır ilk gösterildiğinde oluşturulur.
-  const entries = songs.map((song) => ({
-    song,
-    searchText: foldForSearch(`${song.title} ${song.artist}`),
-    row: null,
-  }));
+  const toEntries = (list) =>
+    list.map((song) => ({ song, searchText: foldForSearch(`${song.title} ${song.artist}`), row: null }));
+  let entries = toEntries(songs);
   const sortedCache = new Map();
 
   const state = { query: '', filter: 'all', sort: loadSort() };
@@ -60,7 +62,8 @@ export function createSongListView(root, { songs, categories, usesSampleData }) 
       : null;
 
   ui.sort.value = state.sort;
-  ui.notice.hidden = !usesSampleData;
+  ui.removeSamples.addEventListener('click', () => onRemoveSamples?.());
+  updateSampleNotice();
   renderChips();
   render();
 
@@ -155,29 +158,54 @@ export function createSongListView(root, { songs, categories, usesSampleData }) 
     return sortedCache.get(state.sort);
   }
 
-  function render({ toTop = false } = {}) {
-    visibleEntries = sortedEntries().filter(isVisible);
+  /** Kayıtlı şarkılar değişince (ör. favori, silme) listeyi yeniler; arama ve filtre korunur. */
+  function setSongs(songsNow) {
+    entries = toEntries(songsNow);
+    sortedCache.clear();
+    updateSampleNotice();
+    render({ keepShown: true });
+  }
+
+  function updateSampleNotice() {
+    const sampleCount = entries.filter((entry) => entry.song.isSample).length;
+    ui.notice.hidden = sampleCount === 0;
+    ui.noticeText.textContent =
+      `Listede ${sampleCount} örnek şarkı var. ` +
+      'Kendi şarkılarınızı ekledikten sonra hepsini tek dokunuşla kaldırabilirsiniz.';
+  }
+
+  /**
+   * Listeyi yeniden çizer.
+   * toTop: listenin başına dön. keepShown: ekrandaki satır sayısını koru
+   * (şarkı ekranından dönünce kalınan yer kaybolmasın).
+   */
+  function render({ toTop = false, keepShown = false } = {}) {
+    const libraryEmpty = entries.length === 0;
+    root.classList.toggle('is-library-empty', libraryEmpty);
+    visibleEntries = libraryEmpty ? [] : sortedEntries().filter(isVisible);
 
     ui.count.textContent = `${visibleEntries.length} şarkı`;
     const isEmpty = visibleEntries.length === 0;
     ui.list.hidden = isEmpty;
     ui.empty.hidden = !isEmpty;
-    if (isEmpty) ui.empty.replaceChildren(...emptyContent());
+    if (isEmpty) ui.empty.replaceChildren(...(libraryEmpty ? libraryEmptyContent() : emptyContent()));
 
     // Liste değiştiyse başına dön; aksi hâlde aşağıda boş bir alan kalabilir.
     if (toTop && window.scrollY > 0) window.scrollTo(0, 0);
 
+    const keep = keepShown ? shownCount : 0;
     shownCount = 0;
     ui.list.replaceChildren();
     ui.more.hidden = true;
-    showMore();
+    showMore(keep);
   }
 
-  /** Sıradaki satırları listeye ekler. */
-  function showMore() {
+  /** Sıradaki satırları listeye ekler (en az minimum kadar satır gösterilir). */
+  function showMore(minimum = 0) {
     if (shownCount >= visibleEntries.length) return;
     // Gözlemci yoksa (çok eski tarayıcı) hepsi bir kerede gösterilir.
-    const end = moreObserver ? Math.min(shownCount + PAGE_SIZE, visibleEntries.length) : visibleEntries.length;
+    const target = Math.max(shownCount + PAGE_SIZE, minimum);
+    const end = moreObserver ? Math.min(target, visibleEntries.length) : visibleEntries.length;
     const fragment = document.createDocumentFragment();
     for (let i = shownCount; i < end; i += 1) fragment.append(rowFor(visibleEntries[i]));
     ui.list.append(fragment);
@@ -222,6 +250,20 @@ export function createSongListView(root, { songs, categories, usesSampleData }) 
     return [el('p', { class: 'empty__title', text: 'Henüz şarkı eklenmedi.' })];
   }
 
+  /** Hiç şarkı yokken gösterilen karşılama: akorlar sözlerin üstünde. */
+  function libraryEmptyContent() {
+    const segment = (chord, lyric) =>
+      el('span', { class: 'chordline__seg', 'aria-hidden': 'true' },
+        el('span', { class: 'chordline__chord', text: chord }),
+        el('span', { class: 'chordline__lyric', text: lyric }));
+    return [
+      el('div', { class: 'empty-hero' },
+        el('p', { class: 'chordline', role: 'heading', 'aria-level': '2', 'aria-label': 'Repertuvarınız boş' },
+          segment('Am', 'Repertuvarınız '), segment('F', 'boş')),
+        el('p', { class: 'empty__text', text: 'İlk şarkınızı eklemek için “Şarkı ekle” düğmesine dokunun.' })),
+    ];
+  }
+
   function rowFor(entry) {
     if (entry.row) return entry.row;
     const { song } = entry;
@@ -259,6 +301,8 @@ export function createSongListView(root, { songs, categories, usesSampleData }) 
     );
     return entry.row;
   }
+
+  return { setSongs };
 }
 
 function loadSort() {
