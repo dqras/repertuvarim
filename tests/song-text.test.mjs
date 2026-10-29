@@ -143,3 +143,47 @@ test('çevrilen metin tekrar çevrilince değişmez', () => {
   assert.equal(convertChordSheet(once).text, once);
   assert.equal(convertChordSheet(once).converted, 0);
 });
+
+// --- Bölüm başlıkları ve sitelerden aktarım ---------------------------------------
+
+import { isSectionLabel, parseImport } from '../js/music/song-text.js';
+
+test('bölüm başlıkları tanınır', () => {
+  for (const label of ['Nakarat', 'Nakarat:', 'NAKARAT (x2)', 'Giriş', 'Ara Solo', '[Nakarat]', 'Solo 2', 'Intro:', 'Kıta']) {
+    assert.equal(isSectionLabel(label), true, label);
+  }
+  for (const line of ['Nakarat gibi bir söz', 'Ara ara gelirim', 'Bu gece']) assert.equal(isSectionLabel(line), false, line);
+});
+
+test('akor satırı bölüm başlığıyla birleştirilmez', () => {
+  assert.equal(convertChordSheet('Am   F\nNakarat\nC  G\nSöz').text, '[Am]   [F]\nNakarat\n[C]Söz[G]');
+});
+
+test('aktarım metni çözülür, akorlar yerleştirilir', () => {
+  const text = [
+    'Repertuvarım aktarım',
+    'Şarkı: Gece Yolu',
+    'Sanatçı: Uydurma Grup',
+    'Ton: C#m',
+    'Kaynak: https://www.repertuarim.com/akor/ornek.html',
+    '',
+    'C#m    B',
+    'Gece yarısı yollar',
+    '',
+    'Nakarat',
+    'A      E',
+    'Yine sen',
+  ].join('\n');
+  assert.deepEqual(parseImport(text), {
+    title: 'Gece Yolu',
+    artist: 'Uydurma Grup',
+    key: 'C#m',
+    source: 'https://www.repertuarim.com/akor/ornek.html',
+    content: '[C#m]Gece ya[B]rısı yollar\n\nNakarat\n[A]Yine se[E]n',
+  });
+});
+
+test('aktarım başlığı olmayan metin aktarım sayılmaz', () => {
+  assert.equal(parseImport('Am F\nSöz'), null);
+  assert.equal(parseImport(''), null);
+});
