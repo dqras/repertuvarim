@@ -54,6 +54,14 @@
       </div>
 
       <div class="page page--list">
+        <div class="install-card" id="install-card" hidden>
+          <img class="install-card__icon" src="icons/icon-192.png" alt="" width="44" height="44">
+          <p class="install-card__text" id="install-card-text"></p>
+          <div class="install-card__actions">
+            <button class="button button--quiet button--small" id="install-card-later" type="button">Şimdi değil</button>
+            <button class="button button--primary button--small" id="install-card-button" type="button">Ana ekrana ekle</button>
+          </div>
+        </div>
         <div class="draft-notices" id="draft-notices" hidden></div>
         <div class="notice" id="sample-notice" hidden>
           <p class="notice__text" id="sample-notice-text"></p>
@@ -121,7 +129,7 @@
           Şarkılarınız yalnızca bu cihazda ve bu tarayıcıda saklanır. Tarayıcının site verilerini
           temizlerseniz ya da uygulamayı kaldırırsanız silinirler. Yedek alma özelliği 11. aşamada gelecek.
         </p>
-        <button class="button button--primary status__install" id="install-button" type="button" hidden>Uygulama olarak yükle</button>
+        <button class="button button--primary status__install" id="install-button" type="button" hidden>Ana ekrana ekle</button>
       </div>
     </section>
   </main>

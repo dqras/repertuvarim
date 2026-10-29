@@ -19,8 +19,10 @@ Adres: https://dqras.github.io/repertuvarim/
 | `js/data/defaults.js` | İlk kurulumda gelen kategoriler |
 | `js/data/sample-songs.js` | Örnek şarkılar (uydurma; ilk açılışta bir kez eklenir) |
 | `js/lib/text.js` | Türkçeye uygun arama ve sıralama |
+| `js/music/chords.js` | Transpoze motoru: akorları tanıma, yarım ses taşıma, diyez/bemol, tonlar |
+| `js/music/song-text.js` | Şarkı metni: [Am] akorlarını bulma, bütün şarkıyı taşıma, ayrı satırdaki akorları [Am] biçimine çevirme |
 | `js/lib/dom.js` | Küçük arayüz yardımcıları ve simgeler |
-| `js/views/` | Ekranlar: şarkı listesi, şarkı ekranı, şarkı formu (ekleme/düzenleme), durum, onay penceresi |
+| `js/views/` | Ekranlar: şarkı listesi, şarkı ekranı, şarkı formu (ekleme/düzenleme), durum, onay penceresi, ana ekrana ekleme |
 | `sw.js` | Service worker: dosyaları cihaza kaydeder, uygulamanın internetsiz açılmasını sağlar |
 | `manifest.webmanifest` | Uygulamanın adı, simgesi ve renkleri |
 | `icons/` | Uygulama simgeleri |
