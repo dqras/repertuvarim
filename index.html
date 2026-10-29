@@ -18,43 +18,105 @@
 <body>
   <header class="topbar">
     <div class="topbar__inner">
-      <img class="topbar__logo" src="icons/icon.svg" alt="" width="28" height="28">
-      <span class="topbar__name">Repertuvarım</span>
+      <a class="topbar__brand" id="topbar-brand" href="#/">
+        <img class="topbar__logo" src="icons/icon.svg" alt="" width="28" height="28">
+        <span class="topbar__name">Repertuvarım</span>
+      </a>
+      <button class="topbar__back" id="topbar-back" type="button" hidden>
+        <svg class="topbar__back-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+        <span>Şarkılar</span>
+      </button>
+      <a class="icon-button topbar__status" id="topbar-status" href="#/durum" aria-label="Durum">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.6v.1"/></svg>
+        <span class="status-dot" id="status-dot" data-tone="neutral"></span>
+      </a>
     </div>
   </header>
 
-  <main class="page" id="main">
-    <section class="hero" aria-labelledby="hero-title">
-      <!-- Akorlar sözlerin üstünde: uygulamanın şarkı ekranının küçük bir önizlemesi. -->
-      <h1 class="chordline" id="hero-title" aria-label="Hoş geldiniz">
-        <span class="chordline__seg" aria-hidden="true"><span class="chordline__chord">C</span><span class="chordline__lyric">Hoş gel</span></span><span class="chordline__seg" aria-hidden="true"><span class="chordline__chord">G</span><span class="chordline__lyric">diniz</span></span>
-      </h1>
-      <p class="lead">Uygulama çalışıyor. Şarkı listeniz bir sonraki aşamada bu ekrana gelecek.</p>
-      <button class="button button--primary" id="install-button" type="button" hidden>Uygulama olarak yükle</button>
+  <main id="main">
+    <!-- Şarkı listesi (ana ekran) -->
+    <section class="view" id="view-list" aria-labelledby="list-title" hidden>
+      <h1 class="visually-hidden" id="list-title" tabindex="-1">Şarkılar</h1>
+
+      <div class="list-toolbar">
+        <div class="list-toolbar__inner">
+          <div class="search">
+            <svg class="search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.2-4.2"/></svg>
+            <input class="search__input" id="search" type="search" placeholder="Şarkı veya sanatçı ara"
+              aria-label="Şarkı veya sanatçı ara" autocomplete="off" autocorrect="off" autocapitalize="off"
+              spellcheck="false" enterkeyhint="search">
+            <button class="search__clear" id="search-clear" type="button" aria-label="Aramayı temizle" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+          </div>
+          <div class="chips" id="filter-chips" role="group" aria-label="Kategoriye göre süz"></div>
+        </div>
+      </div>
+
+      <div class="page page--list">
+        <p class="notice" id="sample-notice" hidden>
+          Bunlar örnek şarkılar. Kendi şarkılarınızı kaydetme özelliği sonraki aşamalarda gelecek.
+        </p>
+        <div class="list-head">
+          <p class="list-head__count" id="song-count"></p>
+          <label class="sort">
+            <span class="sort__label">Sırala</span>
+            <select class="sort__select" id="sort">
+              <option value="title">Şarkı adı (A–Z)</option>
+              <option value="artist">Sanatçı (A–Z)</option>
+              <option value="recent">Son eklenen</option>
+            </select>
+          </label>
+        </div>
+        <ul class="song-list" id="song-list" role="list"></ul>
+        <!-- Liste uzunsa bu işaret ekrana yaklaşınca devamı eklenir -->
+        <div class="list-more" id="list-more" aria-hidden="true" hidden></div>
+        <div class="empty" id="list-empty" hidden></div>
+      </div>
     </section>
 
-    <section class="status" aria-labelledby="status-title">
-      <h2 class="section-title" id="status-title">Durum</h2>
-      <dl class="status__list">
-        <div class="status__row">
-          <dt>Uygulama</dt>
-          <dd><span class="state" id="state-app" data-tone="neutral">Yükleniyor…</span></dd>
-        </div>
-        <div class="status__row">
-          <dt>İnternetsiz kullanım</dt>
-          <dd><span class="state" id="state-offline" data-tone="neutral">Hazırlanıyor…</span></dd>
-        </div>
-        <div class="status__row">
-          <dt>İnternet bağlantısı</dt>
-          <dd><span class="state" id="state-network" data-tone="neutral">Kontrol ediliyor…</span></dd>
-        </div>
-        <div class="status__row">
-          <dt>Sürüm</dt>
-          <dd><span class="version" id="state-version">—</span></dd>
-        </div>
-      </dl>
+    <!-- Şarkı ekranı: içeriği js/views/song-detail.js çizer -->
+    <section class="view" id="view-song" hidden></section>
+
+    <!-- Yeni şarkı -->
+    <section class="view" id="view-new" aria-labelledby="new-title" hidden>
+      <div class="page page--screen">
+        <h1 class="screen-title" id="new-title" tabindex="-1">Yeni şarkı</h1>
+        <p class="muted">Şarkı ekleme formu 6. aşamada bu ekrana gelecek.</p>
+      </div>
+    </section>
+
+    <!-- Durum -->
+    <section class="view" id="view-status" aria-labelledby="status-title" hidden>
+      <div class="page page--screen">
+        <h1 class="screen-title" id="status-title" tabindex="-1">Durum</h1>
+        <dl class="status__list">
+          <div class="status__row">
+            <dt>Uygulama</dt>
+            <dd><span class="state" id="state-app" data-tone="neutral">Yükleniyor…</span></dd>
+          </div>
+          <div class="status__row">
+            <dt>İnternetsiz kullanım</dt>
+            <dd><span class="state" id="state-offline" data-tone="neutral">Hazırlanıyor…</span></dd>
+          </div>
+          <div class="status__row">
+            <dt>İnternet bağlantısı</dt>
+            <dd><span class="state" id="state-network" data-tone="neutral">Kontrol ediliyor…</span></dd>
+          </div>
+          <div class="status__row">
+            <dt>Sürüm</dt>
+            <dd><span class="version" id="state-version">—</span></dd>
+          </div>
+        </dl>
+        <button class="button button--primary status__install" id="install-button" type="button" hidden>Uygulama olarak yükle</button>
+      </div>
     </section>
   </main>
+
+  <a class="fab" id="fab-add" href="#/yeni" hidden>
+    <svg class="fab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    <span>Şarkı ekle</span>
+  </a>
 
   <div class="toast" id="update-toast" role="status" aria-live="polite" hidden>
     <span>Yeni sürüm hazır.</span>
@@ -62,7 +124,7 @@
   </div>
 
   <noscript>
-    <p class="page">Bu uygulamanın çalışması için tarayıcıda JavaScript açık olmalıdır.</p>
+    <p class="page page--screen">Bu uygulamanın çalışması için tarayıcıda JavaScript açık olmalıdır.</p>
   </noscript>
 </body>
 </html>

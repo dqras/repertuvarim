@@ -11,7 +11,7 @@
  * yalnızca uygulamanın kendi dosyalarını tutar; silinse bile şarkılar etkilenmez.
  */
 
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 const CACHE_PREFIX = 'repertuvarim-';
 const CACHE_NAME = `${CACHE_PREFIX}${VERSION}`;
 
@@ -24,6 +24,16 @@ const APP_FILES = [
   './css/styles.css',
   './js/app.js',
   './js/pwa.js',
+  './js/router.js',
+  './js/lib/dom.js',
+  './js/lib/text.js',
+  './js/data/defaults.js',
+  './js/data/repository.js',
+  './js/data/sample-songs.js',
+  './js/views/components.js',
+  './js/views/song-list.js',
+  './js/views/song-detail.js',
+  './js/views/status.js',
   './icons/icon.svg',
   './icons/favicon-32.png',
   './icons/apple-touch-icon.png',
