@@ -1299,6 +1299,13 @@ a {
   margin-top: var(--space-5);
 }
 
+.status__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
 .status__note {
   max-width: 36rem;
   margin-top: var(--space-4);
@@ -2574,6 +2581,27 @@ a {
   margin-top: var(--space-3);
 }
 
+.score-token {
+  margin-top: var(--space-2);
+}
+
+.token-help {
+  margin-top: var(--space-3);
+}
+
+.token-help__steps {
+  margin: var(--space-2) 0;
+  padding-left: 1.4em;
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.95em;
+}
+
+.token-help a {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
 #sc-read-notice.is-busy {
   border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
 }
@@ -2589,4 +2617,152 @@ a {
 .staff-problem-number {
   fill: var(--color-danger);
   font-family: var(--font-ui);
+}
+
+/* --- Yedekleme (Aşama 11) ----------------------------------------------- */
+
+.backup-card {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-button);
+  background: var(--color-surface);
+}
+
+.backup-last {
+  color: var(--color-text-muted);
+}
+
+.backup-last strong {
+  color: var(--color-text);
+}
+
+.backup-last strong.is-old {
+  color: var(--color-accent);
+}
+
+.backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.backup-restore {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  border-radius: var(--radius-button);
+  background: var(--color-surface);
+}
+
+.backup-result {
+  margin-top: var(--space-5);
+}
+
+.backup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.backup-table th,
+.backup-table td {
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--color-line);
+  text-align: right;
+}
+
+.backup-table th[scope="row"],
+.backup-table thead th:first-child {
+  text-align: left;
+}
+
+.backup-table thead th {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.backup-safe {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  font-size: var(--text-sm);
+}
+
+.backup-safe .icon {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--color-accent);
+}
+
+.backup-choices {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.backup-choices legend {
+  margin-bottom: var(--space-2);
+  font-weight: 650;
+}
+
+.backup-choice {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-button);
+  cursor: pointer;
+}
+
+.backup-choice:has(input:checked) {
+  border-color: var(--color-accent);
+}
+
+.backup-choice input {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.15rem;
+  accent-color: var(--color-accent);
+}
+
+.backup-choice > span {
+  display: grid;
+  gap: 2px;
+}
+
+.backup-choice__text {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.backup-info {
+  margin-top: var(--space-6);
+}
+
+.backup-info__list {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 40rem;
+  margin-top: var(--space-3);
+  padding-left: 1.2em;
+  color: var(--color-text-muted);
+}
+
+.backup-info__list strong {
+  color: var(--color-text);
+}
+
+.backup-reminder {
+  margin-top: var(--space-3);
 }
