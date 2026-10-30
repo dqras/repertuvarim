@@ -25,6 +25,9 @@ import { createStatusView, describeOffline } from './views/status.js';
 import { confirmDialog } from './views/dialog.js';
 import { showMessage } from './views/components.js';
 import { setupInstallUi } from './views/install.js';
+import { createCategoriesView } from './views/categories.js';
+import { createSetlistsView, createSetlistView, newSetlistDialog } from './views/setlists.js';
+import { pickDialog } from './views/dialog.js';
 
 const byId = (id) => document.getElementById(id);
 
@@ -34,6 +37,14 @@ const views = {
   editor: byId('view-editor'),
   status: byId('view-status'),
   import: byId('view-import'),
+  categories: byId('view-categories'),
+  setlists: byId('view-setlists'),
+  setlist: byId('view-setlist'),
+};
+const tabs = {
+  nav: byId('main-tabs'),
+  songs: byId('tab-songs'),
+  setlists: byId('tab-setlists'),
 };
 const topbar = {
   brand: byId('topbar-brand'),
@@ -47,7 +58,14 @@ const addButton = byId('fab-add');
 let listView = null;
 let editor = null;
 let songView = null;
+let categoriesView = null;
+let setlistsView = null;
+let setlistView = null;
 let editorSongId = null; // düzenlenen şarkı (yeni şarkıda null)
+
+// Ekranların paylaştığı güncel veriler (değişince repository.onChange ile yenilenir).
+const data = { songs: [], categories: [], setlists: [] };
+const categoryById = new Map(); // şarkı ekranı bu nesneyi kullanır; yerinde güncellenir
 let appFailed = false;
 
 // --- Ekranlar arası geçiş --------------------------------------------------
@@ -56,7 +74,7 @@ let currentView = null;
 let listScrollY = 0;
 
 /** Bir ekranı gösterir, diğerlerini gizler. title: pencere başlığında görünecek ad. */
-function showView(name, title) {
+function showView(name, title, { backLabel = null } = {}) {
   const previous = currentView;
   if (previous === 'list') listScrollY = window.scrollY;
   // Formdan herhangi bir yolla çıkılınca bekleyen taslak hemen kaydedilir.
@@ -67,9 +85,15 @@ function showView(name, title) {
   for (const [key, node] of Object.entries(views)) node.hidden = key !== name;
 
   const isList = name === 'list';
-  topbar.brand.hidden = !isList;
-  topbar.back.hidden = isList;
-  topbar.backLabel.textContent = name === 'song' ? 'Şarkılar' : 'Geri';
+  const isHome = isList || name === 'setlists'; // ana bölümler: üstte sekmeler, geri düğmesi yok
+  topbar.brand.hidden = !isHome;
+  topbar.back.hidden = isHome;
+  topbar.backLabel.textContent = backLabel ?? (name === 'song' ? 'Şarkılar' : 'Geri');
+  tabs.nav.hidden = !isHome;
+  tabs.songs.toggleAttribute('aria-current', isList);
+  tabs.setlists.toggleAttribute('aria-current', name === 'setlists');
+  if (isList) tabs.songs.setAttribute('aria-current', 'page');
+  if (name === 'setlists') tabs.setlists.setAttribute('aria-current', 'page');
   addButton.hidden = !isList || appFailed;
   document.body.classList.toggle('has-fab', isList && !appFailed);
   document.body.classList.toggle('has-bar', name === 'song');
@@ -89,10 +113,18 @@ async function goBack() {
   if (canGoBack()) {
     history.back();
   } else {
-    const parent = currentView === 'editor' && editorSongId ? `/sarki/${encodeURIComponent(editorSongId)}` : '/';
-    navigate(parent, { replace: true });
+    navigate(parentPath(), { replace: true });
   }
 }
+
+/** Geride uygulama ekranı yoksa (bağlantıdan açıldıysa) geri düğmesinin gideceği üst ekran. */
+function parentPath() {
+  if (currentView === 'editor' && editorSongId) return `/sarki/${encodeURIComponent(editorSongId)}`;
+  if (currentView === 'setlist') return '/setlistler';
+  if (currentView === 'song' && currentSetlistId) return `/setlist/${encodeURIComponent(currentSetlistId)}`;
+  return '/';
+}
+let currentSetlistId = null; // şarkı bir setlistten açıldıysa
 
 topbar.back.addEventListener('click', goBack);
 
@@ -161,6 +193,86 @@ async function setUpOfflineSupport() {
 
 // --- Kullanıcı işlemleri ---------------------------------------------------
 
+/** Şarkıları, kategorileri ve setlistleri veritabanından yeniden okur. */
+async function loadData() {
+  const [songs, categories, setlists] = await Promise.all([
+    repository.listSongs(),
+    repository.listCategories(),
+    repository.listSetlists(),
+  ]);
+  Object.assign(data, { songs, categories, setlists });
+  categoryById.clear();
+  for (const category of categories) categoryById.set(category.id, category);
+}
+
+/** Setlisti bulur; az önce oluşturulduysa veriler henüz yenilenmemiş olabilir, yeniden okur. */
+async function findSetlist(id) {
+  let setlist = data.setlists.find((item) => item.id === id);
+  if (!setlist) {
+    await loadData().catch(() => {});
+    setlist = data.setlists.find((item) => item.id === id);
+  }
+  return setlist ?? null;
+}
+
+function songMap() {
+  return new Map(data.songs.map((song) => [song.id, song]));
+}
+
+const NEW_SETLIST = '__yeni__';
+
+/** Şarkı ekranındaki "Setliste ekle": hangi setlistlerde olacağını seçtirir. */
+async function addToSetlist(song) {
+  const create = (name, songIds) => repository.createSetlist(name, songIds);
+  if (!data.setlists.length) {
+    const created = await newSetlistDialog(create, [song.id]);
+    if (created) showMessage(`“${song.title}”, “${created.name}” setlistine eklendi.`);
+    return;
+  }
+  const picked = await pickDialog({
+    title: `“${song.title}” hangi setlistlerde olsun?`,
+    items: [
+      ...data.setlists.map((setlist) => ({
+        id: setlist.id,
+        label: setlist.name,
+        sublabel: `${setlist.songIds.length} şarkı`,
+        checked: setlist.songIds.includes(song.id),
+      })),
+      { id: NEW_SETLIST, label: '+ Yeni setlist oluştur', sublabel: 'Ad sorulur, şarkı içine eklenir' },
+    ],
+    confirmLabel: 'Kaydet',
+    searchable: data.setlists.length > 6,
+  });
+  if (!picked) return;
+  const chosen = new Set(picked);
+  let added = 0;
+  let removed = 0;
+  try {
+    for (const setlist of data.setlists) {
+      const has = setlist.songIds.includes(song.id);
+      if (chosen.has(setlist.id) && !has) {
+        await repository.updateSetlist(setlist.id, { songIds: [...setlist.songIds, song.id] });
+        added += 1;
+      } else if (!chosen.has(setlist.id) && has) {
+        await repository.updateSetlist(setlist.id, { songIds: setlist.songIds.filter((id) => id !== song.id) });
+        removed += 1;
+      }
+    }
+  } catch (error) {
+    console.error('Setlist kaydedilemedi:', error);
+    showMessage(describeStorageError(error), { tone: 'error' });
+    return;
+  }
+  if (chosen.has(NEW_SETLIST)) {
+    const created = await newSetlistDialog(create, [song.id]);
+    if (created) added += 1;
+  }
+  if (added || removed) {
+    const parts = [added ? `${added} setliste eklendi` : '', removed ? `${removed} setlistten çıkarıldı` : ''].filter(Boolean);
+    showMessage(`“${song.title}” ${parts.join(', ')}.`);
+  }
+}
+
 /** Hata mesajını gösterir ve hatayı çağırana geri fırlatır. */
 function reportAndRethrow(label, error) {
   console.error(label, error);
@@ -211,8 +323,11 @@ const editorActions = {
     }
     showMessage(songId ? 'Değişiklikler kaydedildi.' : 'Şarkı kaydedildi.');
     const songPath = `/sarki/${encodeURIComponent(song.id)}`;
-    // Düzenlemede şarkı ekranına geri dönülür; yeni şarkıda form, şarkı ekranıyla değiştirilir.
-    if (songId && canGoBack() && previousPath() === songPath) history.back();
+    // Düzenlemede şarkı ekranına (setlistten açıldıysa setlistteki hâline) geri dönülür;
+    // yeni şarkıda form, şarkı ekranıyla değiştirilir.
+    const previous = previousPath() ?? '';
+    const cameFromSong = previous === `/sarki/${song.id}` || (previous.startsWith('/setlist/') && previous.endsWith(`/${song.id}`));
+    if (songId && canGoBack() && cameFromSong) history.back();
     else navigate(songPath, { replace: true });
     return song;
   },
@@ -282,6 +397,13 @@ function startAppRouter(categoryById) {
     [
       { pattern: /^\/$/, show: () => showView('list') },
       {
+        pattern: /^\/favoriler$/,
+        show: () => {
+          listView?.setFilter('favorites');
+          navigate('/', { replace: true });
+        },
+      },
+      {
         pattern: /^\/sarki\/(?<id>[^/]+)$/,
         show: async ({ id }) => {
           if (appFailed) return navigate('/', { replace: true });
@@ -292,8 +414,58 @@ function startAppRouter(categoryById) {
             console.error('Şarkı okunamadı:', error);
             showMessage(describeStorageError(error), { tone: 'error' });
           }
+          currentSetlistId = null;
           await songView.show(song);
           showView('song', song ? song.title : 'Şarkı bulunamadı');
+        },
+      },
+      {
+        pattern: /^\/kategoriler$/,
+        show: () => {
+          if (appFailed) return navigate('/', { replace: true });
+          categoriesView.show(data.categories, data.songs);
+          showView('categories', 'Kategoriler');
+        },
+      },
+      {
+        pattern: /^\/setlistler$/,
+        show: () => {
+          if (appFailed) return navigate('/', { replace: true });
+          setlistsView.show(data.setlists, songMap());
+          showView('setlists', 'Setlistler');
+        },
+      },
+      {
+        pattern: /^\/setlist\/(?<id>[^/]+)$/,
+        show: async ({ id }) => {
+          if (appFailed) return navigate('/', { replace: true });
+          const setlist = await findSetlist(id);
+          setlistView.show(setlist, data.songs);
+          showView('setlist', setlist ? setlist.name : 'Setlist bulunamadı');
+        },
+      },
+      {
+        pattern: /^\/setlist\/(?<setlistId>[^/]+)\/(?<songId>[^/]+)$/,
+        show: async ({ setlistId, songId }) => {
+          if (appFailed) return navigate('/', { replace: true });
+          const setlist = await findSetlist(setlistId);
+          const songs = songMap();
+          const order = setlist ? setlist.songIds.filter((id) => songs.has(id)) : [];
+          const index = order.indexOf(songId);
+          if (!setlist || index === -1) return navigate(setlist ? `/setlist/${encodeURIComponent(setlistId)}` : '/setlistler', { replace: true });
+          currentSetlistId = setlist.id;
+          const song = songs.get(songId);
+          await songView.show(song, {
+            setlist: {
+              id: setlist.id,
+              name: setlist.name,
+              index,
+              total: order.length,
+              prev: index > 0 ? songs.get(order[index - 1]) : null,
+              next: index < order.length - 1 ? songs.get(order[index + 1]) : null,
+            },
+          });
+          showView('song', song.title, { backLabel: 'Setlist' });
         },
       },
       {
@@ -372,22 +544,40 @@ async function start() {
       }),
   });
 
-  const [songs, categories] = await Promise.all([repository.listSongs(), repository.listCategories()]);
-  const categoryById = new Map(categories.map((category) => [category.id, category]));
+  await loadData();
 
-  listView = createSongListView(views.list, { songs, categories, onRemoveSamples: removeSamples });
-  editor = createSongEditor(views.editor, { categories, actions: editorActions });
+  listView = createSongListView(views.list, { songs: data.songs, categories: data.categories, onRemoveSamples: removeSamples });
+  editor = createSongEditor(views.editor, { categories: () => data.categories, actions: editorActions });
   songView = createSongView(views.song, {
     categoryById,
     onToggleFavorite: toggleFavorite,
     loadPrefs: loadSongPrefs,
     savePref: saveSongPref,
+    onAddToSetlist: addToSetlist,
+  });
+  categoriesView = createCategoriesView(views.categories, {
+    createCategory: (fields) => repository.createCategory(fields),
+    updateCategory: (id, fields) => repository.updateCategory(id, fields),
+    reorderCategories: (ids) => repository.reorderCategories(ids),
+    deleteCategory: (id) => repository.deleteCategory(id),
+  });
+  setlistsView = createSetlistsView(views.setlists, { createSetlist: (name, songIds) => repository.createSetlist(name, songIds) });
+  setlistView = createSetlistView(views.setlist, {
+    updateSetlist: (id, changes) => repository.updateSetlist(id, changes),
+    deleteSetlist: (id) => repository.deleteSetlist(id),
+    onDeleted: () => (canGoBack() && previousPath() === '/setlistler' ? history.back() : navigate('/setlistler', { replace: true })),
   });
 
-  // Kayıtlı veriler değişince (ekleme, düzenleme, silme, favori) liste ve durum yenilenir.
+  // Kayıtlı veriler değişince (ekleme, düzenleme, silme, favori, kategori, setlist)
+  // açık ekranlar ve durum yenilenir.
   repository.onChange(async () => {
     try {
-      listView.setSongs(await repository.listSongs());
+      await loadData();
+      listView.setSongs(data.songs);
+      listView.setCategories(data.categories);
+      if (currentView === 'categories') categoriesView.update(data.categories, data.songs);
+      if (currentView === 'setlists') setlistsView.update(data.setlists, songMap());
+      if (currentView === 'setlist') setlistView.update(data.setlists.find((item) => item.id === setlistView.id) ?? null, data.songs);
     } catch (error) {
       console.error('Liste yenilenemedi:', error);
       showMessage(describeStorageError(error), { tone: 'error' });
