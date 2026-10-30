@@ -6,18 +6,26 @@
  *  #/nota/yeni             yeni nota       #/nota/<id>/duzenle   düzenleme
  *
  * Nota girişi: ekrandaki tuşlarla (süre, değişim işareti, nota) ya da "nota kodu" ile.
- * Fotoğraftan okuma: fotoğrafı Claude'a gönderin; verdiği "Repertuvarım nota" metnini
- * kopyalayıp "Panodan aktar"a dokunun. Fotoğrafı notanın yanında saklayabilirsiniz.
+ * Fotoğraftan okuma: "Fotoğraftan oku" ile bestenin fotoğrafı (bir ya da birkaç sayfa)
+ * LEGATO nota okuyucusuna gönderilir (music/omr.js); okunan notalar forma yerleşir,
+ * fotoğraf da karşılaştırmak için notanın yanında saklanır. İnternet gerekir.
  */
 import { el, icon } from '../lib/dom.js';
 import { compareText } from '../lib/text.js';
 import { describeStorageError } from '../data/db.js';
 import {
   DURATIONS, DURATION_NAMES, STEP_NAMES, SCORE_HEADER, TIME_SIGNATURES, allKeys, diatonic, fifthsOf,
-  keyLabel, measureProblems, parseNotes, parseScoreImport, parseTime, signatureLabel, transposeScore,
+  keyLabel, measureProblems, parseNotes, parseScoreImport, parseTime, serializeNotes, signatureLabel, transposeScore,
   transposeTargets,
 } from '../music/notation.js';
 import { watchStaff } from '../music/staff.js';
+import { cleanTitle } from '../music/abc.js';
+import { OmrError, readScorePhotos } from '../music/omr.js';
+
+/** Notalar listesinde seçilen fotoğraflar: form açılınca okunmaya başlar. */
+let pendingPhotos = null;
+
+const PRIVACY = 'Fotoğraf, okunması için Hugging Face’teki ücretsiz LEGATO nota okuyucusuna gönderilir; internet gerekir. En iyi sonuç için notayı düz, iyi ışıkta ve sayfayı dolduracak şekilde çekin.';
 import { confirmDialog } from './dialog.js';
 import { showMessage } from './components.js';
 
@@ -38,7 +46,13 @@ export function createScoresView(root) {
     root.replaceChildren(
       el('div', { class: 'page page--screen' },
         el('h1', { class: 'screen-title', tabindex: '-1', text: 'Notalar' }),
-        el('a', { class: 'button button--primary', id: 'score-new', href: '#/nota/yeni' }, icon('plus'), 'Yeni nota'),
+        el('div', { class: 'setlist-view__actions' },
+          photoPicker('score-photo-read', 'Fotoğraftan oku', true, (files) => {
+            pendingPhotos = files;
+            location.hash = '#/nota/yeni';
+          }),
+          el('a', { class: 'button button--quiet', id: 'score-new', href: '#/nota/yeni' }, icon('plus'), 'Elle yaz')),
+        el('p', { class: 'field__hint score-privacy', text: PRIVACY }),
         sorted.length
           ? el('ul', { class: 'setlist-list', id: 'score-list', role: 'list' },
               sorted.map((score) =>
@@ -164,7 +178,7 @@ export function createScoreView(root, { loadPrefs, savePref }) {
           el('div', { class: 'song-bar__group' }, ui.smaller, ui.bigger)))
     );
     current.ui = ui;
-    if (current.measures.length) current.staff = watchStaff(ui.staff, () => ({ ...view(), time: parseTime(score.time), showNames: current.names, scale: current.scale }));
+    if (current.measures.length) current.staff = watchStaff(ui.staff, () => ({ ...view(), time: parseTime(score.time), showNames: current.names, scale: current.scale, clef: score.clef }));
     drawStatus();
   }
 
@@ -258,7 +272,7 @@ export function createScoreEditor(root, actions) {
   let state = null;
 
   function open(score = null) {
-    const base = score ?? { title: '', composer: '', key: { step: 5, alter: 0, mode: 'minor' }, time: '4/4', code: '', notes: '', photo: null };
+    const base = score ?? { title: '', composer: '', key: { step: 5, alter: 0, mode: 'minor' }, time: '4/4', clef: 'treble', code: '', notes: '', photo: null };
     state = {
       id: score?.id ?? null,
       baseline: JSON.stringify(snapshot(base)),
@@ -269,12 +283,119 @@ export function createScoreEditor(root, actions) {
       accidental: null, // tek seferlik: 1, -1, 0
       octaveShift: 0,
       staff: null,
+      reading: false,
     };
+    readUndo = null;
     render(base);
+    if (pendingPhotos && !score) {
+      const files = pendingPhotos;
+      pendingPhotos = null;
+      readPhotos(files);
+    }
+  }
+
+  // --- Fotoğraftan okuma ----------------------------------------------------------------
+
+  let readUndo = null;
+
+  function showReadNotice(children, { busy = false } = {}) {
+    const box = state.ui.readNotice;
+    box.replaceChildren(...children);
+    box.hidden = false;
+    box.classList.toggle('is-busy', busy);
+  }
+
+  async function readPhotos(files) {
+    if (state.reading) return;
+    state.reading = true;
+    const { ui } = state;
+    const before = readFields();
+    const progressText = ({ step, page, pages }) => {
+      const which = pages > 1 ? ` (${page}/${pages}. sayfa)` : '';
+      if (step === 'waking') return `Nota okuyucusu uyanıyor${which}… İlk seferde bir-iki dakika sürebilir.`;
+      if (step === 'upload') return `Fotoğraf gönderiliyor${which}…`;
+      return `Notalar okunuyor${which}… Genellikle yarım dakika sürer.`;
+    };
+    showReadNotice([el('p', { class: 'notice__text', id: 'sc-read-progress' }, el('span', { class: 'spinner', 'aria-hidden': 'true' }), progressText({ step: 'upload', page: 1, pages: files.length }))], { busy: true });
+    ui.readNotice.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    let result;
+    try {
+      result = await readScorePhotos(files, {
+        onProgress: (progress) => {
+          const text = document.getElementById('sc-read-progress');
+          if (text) text.lastChild.textContent = progressText(progress);
+        },
+      });
+    } catch (error) {
+      state.reading = false;
+      const reason = error instanceof OmrError ? error.reason : 'server';
+      const messages = {
+        offline: 'Fotoğraftan okumak için internet gerekiyor. Bağlantınızı kontrol edip tekrar deneyin.',
+        image: 'Bu dosya açılamadı. Bir fotoğraf ya da PDF seçin.',
+        empty: 'Fotoğrafta nota bulunamadı. Porteyi yakından, düz ve iyi ışıkta çekip tekrar deneyin.',
+        busy: 'Nota okuyucusu şu an çok yoğun. Birkaç dakika sonra tekrar deneyin.',
+        timeout: 'Okuma çok uzun sürdü. Biraz sonra tekrar deneyin.',
+        server: 'Nota okuyucusuna şu an ulaşılamıyor. Biraz sonra tekrar deneyin; olmazsa notaları elle yazabilirsiniz.',
+      };
+      showReadNotice([el('p', { class: 'notice__text', text: messages[reason] ?? messages.server })]);
+      return;
+    }
+    state.reading = false;
+
+    // Forma yerleştir
+    if (!ui.title.value.trim() && cleanTitle(result.title)) ui.title.value = cleanTitle(result.title);
+    if (!ui.composer.value.trim() && cleanTitle(result.composer)) ui.composer.value = cleanTitle(result.composer);
+    ui.key.value = `${result.key.step},${result.key.alter},${result.key.mode}`;
+    if (!ui.key.value) ui.key.value = '0,0,major';
+    if (TIME_SIGNATURES.includes(result.time)) ui.time.value = result.time;
+    else {
+      ui.time.append(el('option', { value: result.time }, result.time));
+      ui.time.value = result.time;
+    }
+    ui.clef.value = result.clef;
+    ui.code.value = serializeNotes(result.measures, result.key);
+    if (!state.photo) {
+      state.photo = await shrinkImage(files[0]).catch(() => null);
+      drawPhoto();
+    }
+    root.querySelector('.score-code')?.removeAttribute('open');
+    refresh();
+    readUndo = { before, photoBefore: before.photo };
+
+    const problems = measureProblems(result.measures, parseTime(result.time));
+    const notes = [];
+    notes.push(`${result.measures.length} ölçü okundu: ${keyLabel(result.key)}, ${result.time}${result.clef === 'bass' ? ', fa anahtarı' : ''}.`);
+    if (problems.length) notes.push(`${problems.length} ölçünün süresi tutmuyor (porte altında yazıyor); fotoğrafla karşılaştırıp düzeltin.`);
+    else notes.push('Okuma hatası olabilir: porteyi fotoğrafla karşılaştırın.');
+    if (result.warnings.includes('chords')) notes.push('Akorlu yerlerde yalnızca en üstteki nota (ezgi) alındı.');
+    if (result.failed?.length) notes.push(`${result.failed.map((f) => f.page).join(', ')}. sayfa okunamadı.`);
+    showReadNotice([
+      el('p', { class: 'notice__text', text: notes.join(' ') }),
+      el('div', { class: 'notice__actions' },
+        el('button', { type: 'button', class: 'button button--quiet button--small', id: 'sc-read-undo', onclick: undoRead }, 'Geri al')),
+    ]);
+    if (!ui.title.value.trim()) ui.title.focus();
+  }
+
+  function undoRead() {
+    if (!readUndo) return;
+    const { before, photoBefore } = readUndo;
+    readUndo = null;
+    const { ui } = state;
+    ui.title.value = before.title;
+    ui.composer.value = before.composer;
+    ui.key.value = `${before.key.step},${before.key.alter},${before.key.mode}`;
+    ui.time.value = before.time;
+    ui.clef.value = before.clef;
+    ui.code.value = before.code;
+    state.photo = photoBefore;
+    drawPhoto();
+    refresh();
+    state.ui.readNotice.hidden = true;
   }
 
   function snapshot(data) {
-    return { title: data.title, composer: data.composer, key: data.key, time: data.time, code: data.code, notes: data.notes, photo: data.photo ? data.photo.size : 0 };
+    return { title: data.title, composer: data.composer, key: data.key, time: data.time, clef: data.clef ?? 'treble', code: data.code, notes: data.notes, photo: data.photo ? data.photo.size : 0 };
   }
 
   function render(data) {
@@ -292,6 +413,9 @@ export function createScoreEditor(root, actions) {
       ui.key.append(group);
     }
     ui.time = el('select', { class: 'input', id: 'sc-time' }, TIME_SIGNATURES.map((t) => el('option', { value: t, selected: t === data.time }, t)));
+    ui.clef = el('select', { class: 'input', id: 'sc-clef' },
+      el('option', { value: 'treble', selected: (data.clef ?? 'treble') === 'treble' }, 'Sol anahtarı'),
+      el('option', { value: 'bass', selected: data.clef === 'bass' }, 'Fa anahtarı'));
     ui.code = el('textarea', { class: 'input input--code', id: 'sc-code', rows: '5', spellcheck: 'false', autocapitalize: 'off', autocomplete: 'off', placeholder: 'ör. la4:4 si4 do5 re5 | mi5 fa5 sol#5 la5 |' });
     ui.code.value = data.code;
     ui.notes = el('textarea', { class: 'input', id: 'sc-notes', rows: '2' });
@@ -314,13 +438,17 @@ export function createScoreEditor(root, actions) {
       el('div', { class: 'page page--screen' },
         el('form', { class: 'editor score-editor', novalidate: true, onsubmit: (event) => { event.preventDefault(); save(); } },
           el('h1', { class: 'screen-title', tabindex: '-1', text: state.id ? 'Notayı düzenle' : 'Yeni nota' }),
-          state.id ? null : el('div', { class: 'notice notice--import', id: 'sc-import' },
-            el('p', { class: 'notice__text', text: 'Notanın fotoğrafını Claude’a gönderdiyseniz, verdiği “Repertuvarım nota” metnini kopyalayıp buradan aktarın.' }),
+          el('div', { class: 'notice notice--import', id: 'sc-import' },
+            el('p', { class: 'notice__text', text: state.id ? 'Notaları bir fotoğraftan yeniden okutabilirsiniz.' : 'Bestenin fotoğrafını seçin ya da çekin: notalar okunup buraya yerleşir. Birkaç sayfa ise hepsini sırayla seçin.' }),
             el('div', { class: 'notice__actions' },
-              el('button', { type: 'button', class: 'button button--primary button--small', id: 'sc-import-clipboard', onclick: importFromClipboard }, 'Panodan aktar'))),
+              photoPicker('sc-photo-read', 'Fotoğraftan oku', true, (files) => readPhotos(files)),
+              el('button', { type: 'button', class: 'button button--quiet button--small', id: 'sc-import-clipboard', onclick: importFromClipboard }, 'Panodan aktar')),
+            el('p', { class: 'field__hint', text: PRIVACY })),
+          ui.readNotice = el('div', { class: 'notice notice--sheet', id: 'sc-read-notice', 'aria-live': 'polite', hidden: true }),
           field('sc-title', 'Ad', ui.title, ui.titleError),
           field('sc-composer', 'Besteci', ui.composer),
           el('div', { class: 'field-row field-row--two' }, field('sc-key', 'Ton ve donanım', ui.key), field('sc-time', 'Ölçü', ui.time)),
+          field('sc-clef', 'Anahtar', ui.clef),
           el('div', { class: 'field' },
             el('p', { class: 'field__label', text: 'Notalar' }),
             ui.preview,
@@ -343,7 +471,7 @@ export function createScoreEditor(root, actions) {
             el('button', { type: 'button', class: 'button button--danger-quiet', id: 'sc-delete', onclick: remove }, icon('trash'), 'Notayı sil')) : null))
     );
 
-    for (const control of [ui.code, ui.key, ui.time]) control.addEventListener(control === ui.code ? 'input' : 'change', refresh);
+    for (const control of [ui.code, ui.key, ui.time, ui.clef]) control.addEventListener(control === ui.code ? 'input' : 'change', refresh);
     ui.title.addEventListener('input', () => { ui.titleError.hidden = true; ui.title.removeAttribute('aria-invalid'); });
     drawPhoto();
     state.staff?.stop();
@@ -362,7 +490,7 @@ export function createScoreEditor(root, actions) {
 
   function previewOptions() {
     const key = readKey();
-    return { measures: parsed().measures, fifths: fifthsOf(key) ?? 0, time: parseTime(state.ui.time.value), showNames: true, scale: 0.9 };
+    return { measures: parsed().measures, fifths: fifthsOf(key) ?? 0, time: parseTime(state.ui.time.value), showNames: true, scale: 0.9, clef: state.ui.clef.value };
   }
 
   function refresh() {
@@ -413,7 +541,7 @@ export function createScoreEditor(root, actions) {
   /** Bir sonraki notanın oktavı: önceki notaya en yakın + kaydırma. */
   function octaveFor(step) {
     const last = lastNote();
-    const base = last ? Math.round((diatonic(last) - step) / 7) : 4;
+    const base = last ? Math.round((diatonic(last) - step) / 7) : state.ui.clef?.value === 'bass' ? 3 : 4;
     return Math.max(2, Math.min(7, base + state.octaveShift));
   }
 
@@ -524,7 +652,7 @@ export function createScoreEditor(root, actions) {
 
   function readFields() {
     const { ui } = state;
-    return { title: ui.title.value.trim(), composer: ui.composer.value.trim(), key: readKey(), time: ui.time.value, code: ui.code.value.trim(), notes: ui.notes.value, photo: state.photo };
+    return { title: ui.title.value.trim(), composer: ui.composer.value.trim(), key: readKey(), time: ui.time.value, clef: ui.clef.value, code: ui.code.value.trim(), notes: ui.notes.value, photo: state.photo };
   }
 
   async function save() {
@@ -554,6 +682,9 @@ export function createScoreEditor(root, actions) {
   /** Kaydedilmemiş değişiklik varsa sorar; çıkılabiliyorsa true. */
   async function requestLeave() {
     if (!state) return true;
+    if (state.reading) {
+      return confirmDialog({ title: 'Okuma sürüyor', message: 'Fotoğraf hâlâ okunuyor. Çıkarsanız sonuç kaybolur.', confirmLabel: 'Çık', cancelLabel: 'Bekle', danger: true });
+    }
     if (JSON.stringify(snapshot(readFields())) === state.baseline) return true;
     return confirmDialog({ title: 'Değişiklikler kaydedilmesin mi?', message: 'Bu notada yaptığınız değişiklikler silinir.', confirmLabel: 'Değişiklikleri at', cancelLabel: 'Düzenlemeye dön', danger: true });
   }
@@ -576,4 +707,16 @@ async function shrinkImage(file) {
   canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close?.();
   return new Promise((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('toBlob'))), 'image/jpeg', 0.85));
+}
+
+/** "Fotoğraftan oku" düğmesi: kamera ya da fotoğraflar; birden çok sayfa seçilebilir. */
+function photoPicker(id, label, primary, onFiles) {
+  const input = el('input', { type: 'file', accept: 'image/*,application/pdf', multiple: true, id: `${id}-input`, hidden: true });
+  input.addEventListener('change', () => {
+    const files = [...input.files];
+    input.value = '';
+    if (files.length) onFiles(files);
+  });
+  const button = el('button', { type: 'button', class: `button ${primary ? 'button--primary' : 'button--quiet'} button--small`, id, onclick: () => input.click() }, icon('image'), label);
+  return el('span', { class: 'photo-picker' }, button, input);
 }
