@@ -2564,3 +2564,20 @@ a {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Fotoğraftan nota okuma */
+.photo-picker {
+  display: inline-flex;
+}
+
+.score-privacy {
+  margin-top: var(--space-3);
+}
+
+#sc-read-notice.is-busy {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+}
+
+#sc-read-notice .notice__text {
+  flex: 1 1 100%;
+}
