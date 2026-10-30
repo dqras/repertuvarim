@@ -3,7 +3,7 @@
  * Veriler cihazdaki veritabanında (IndexedDB) saklanır; ayrıntılar db.js'de.
  */
 import { openDatabase, transact, result, StorageError } from './db.js';
-import { normalizeSong, normalizeCategory, normalizeSetlist, createId, validateName, CATEGORY_COLORS } from './model.js';
+import { normalizeSong, normalizeCategory, normalizeSetlist, normalizeScore, createId, validateName, CATEGORY_COLORS } from './model.js';
 import { DEFAULT_CATEGORIES } from './defaults.js';
 import { SAMPLE_SONGS } from './sample-songs.js';
 
@@ -290,4 +290,46 @@ export async function removeSampleSongs() {
   });
   notifyChange();
   return removed;
+}
+
+// --- Notalar ------------------------------------------------------------------
+
+export async function listScores() {
+  const rows = await transact(await init(), 'scores', 'readonly', ({ scores }) => result(scores.getAll()));
+  return rows.map(normalizeScore);
+}
+
+export async function getScore(id) {
+  const row = await transact(await init(), 'scores', 'readonly', ({ scores }) => result(scores.get(id)));
+  return row ? normalizeScore(row) : null;
+}
+
+/** Yeni nota kaydeder. fields: { title, composer, key, time, code, notes, photo } */
+export async function createScore(fields) {
+  const now = Date.now();
+  const score = normalizeScore({ ...fields, id: createId(), createdAt: now, updatedAt: now });
+  await transact(await init(), 'scores', 'readwrite', ({ scores }) => result(scores.add(score)));
+  notifyChange();
+  return score;
+}
+
+export async function updateScore(id, fields) {
+  const score = await transact(await init(), 'scores', 'readwrite', async ({ scores }) => {
+    const row = await result(scores.get(id));
+    if (!row) throw new StorageError('notFound');
+    const updated = normalizeScore({ ...row, ...fields, id, createdAt: row.createdAt, updatedAt: Date.now() });
+    await result(scores.put(updated));
+    return updated;
+  });
+  notifyChange();
+  return score;
+}
+
+/** Notayı ve ton tercihini siler. */
+export async function deleteScore(id) {
+  await transact(await init(), ['scores', 'settings'], 'readwrite', ({ scores, settings }) => {
+    scores.delete(id);
+    settings.delete(`scoreKey:${id}`);
+  });
+  notifyChange();
 }

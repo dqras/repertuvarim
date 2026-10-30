@@ -207,3 +207,26 @@ export function normalizeSetlist(raw = {}) {
     updatedAt: isNumber(raw.updatedAt) ? raw.updatedAt : now,
   };
 }
+
+/**
+ * Nota (beste): ton ve donanım, ölçü, nota kodu ve isteğe bağlı fotoğraf (cihazda saklanır).
+ * key: { step 0..6, alter -1..1, mode 'major' | 'minor' }
+ */
+export function normalizeScore(raw = {}) {
+  const key = raw.key && Number.isInteger(raw.key.step)
+    ? { step: raw.key.step, alter: Number(raw.key.alter) || 0, mode: raw.key.mode === 'minor' ? 'minor' : 'major' }
+    : { step: 5, alter: 0, mode: 'minor' };
+  const now = Date.now();
+  return {
+    id: toText(raw.id),
+    title: toText(raw.title).trim(),
+    composer: toText(raw.composer).trim(),
+    key,
+    time: /^\d{1,2}\/(1|2|4|8|16)$/.test(toText(raw.time)) ? toText(raw.time) : '4/4',
+    code: toText(raw.code).replace(/\r\n?/g, '\n'),
+    notes: toText(raw.notes),
+    photo: typeof Blob !== 'undefined' && raw.photo instanceof Blob ? raw.photo : null,
+    createdAt: isNumber(raw.createdAt) ? raw.createdAt : now,
+    updatedAt: isNumber(raw.updatedAt) ? raw.updatedAt : now,
+  };
+}

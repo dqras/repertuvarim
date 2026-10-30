@@ -27,6 +27,10 @@ const UPGRADES = [
   (db) => {
     db.createObjectStore('setlists', { keyPath: 'id' });
   },
+  // Sürüm 4: notalar (porte üzerinde besteler)
+  (db) => {
+    db.createObjectStore('scores', { keyPath: 'id' });
+  },
 ];
 const DB_VERSION = UPGRADES.length;
 
