@@ -3,8 +3,11 @@
  *
  * - Kelimeler hiçbir zaman bölünmez; dar ekranda satır kelime aralarından kayar ve
  *   akorlar heceleriyle birlikte alt satıra geçer.
- * - Akor hecesinden genişse sonraki kelimenin üstüne taşabilir; yalnızca iki akor
- *   çakışacaksa kelimeler arasına boşluk açılır.
+ * - Akor hecesinden genişse sonraki kelimenin üstüne taşabilir. İki akor çakışacaksa
+ *   sözler yerinde kalır, sonraki akor biraz sağa kayar (sitelerdeki görünümün aynısı).
+ *   Sözlerin arasına boşluk yalnızca akor hecesinden çok uzağa düşecekse açılır.
+ * - Satır sonundaki akorlar (söz bittikten sonra çalınanlar) kendi genişlikleriyle yer
+ *   kaplar; ekranın sağından taşmaz, gerekirse alt satıra geçer.
  * - Boş satırlar kıtaları ayırır; "Nakarat" gibi satırlar küçük başlık olarak gösterilir.
  * Ekran genişliği ya da yazı boyutu değişince yerleşim kendiliğinden yenilenir.
  */
@@ -57,13 +60,18 @@ function chordLine(text, chords) {
   for (const chord of chords) {
     const owner = words.find((w) => chord.at >= w.start && chord.at < w.end) ?? words.find((w) => w.start >= chord.at);
     if (owner) owner.chords.push({ at: Math.max(chord.at, owner.start) - owner.start, name: chord.name });
-    else loose.push({ start: chord.at, end: chord.at, word: '', chords: [{ at: 0, name: chord.name }] });
+    else loose.push({ start: chord.at, end: chord.at, word: '', bare: true, chords: [{ at: 0, name: chord.name }] });
   }
   const blocks = [...words, ...loose].sort((a, b) => a.start - b.start);
 
+  // Sözden sonra gelen akorlar tek parça kalır: sığmazsa birlikte alt satıra geçerler.
+  const tail = words.length && loose.length ? document.createElement('span') : null;
+  if (tail) tail.className = 'w-tail';
+
   blocks.forEach((block, index) => {
+    if (block.bare && tail && !tail.parentNode) line.append(tail);
     const span = document.createElement('span');
-    span.className = 'w';
+    span.className = block.bare ? 'w w--bare' : 'w';
     const cuts = [...new Set([0, ...block.chords.map((c) => c.at)])].sort((a, b) => a - b);
     cuts.forEach((cut, k) => {
       const piece = document.createElement('span');
@@ -72,8 +80,20 @@ function chordLine(text, chords) {
       for (const chord of block.chords.filter((c) => c.at === cut)) piece.append(chordElement(chord.name));
       span.append(piece);
     });
-    line.append(span);
-    if (index < blocks.length - 1) line.append(' ');
+    if (block.bare) {
+      // Görünmez bir kopya: blok akorun genişliği kadar yer kaplasın (taşmasın, sığmazsa alt satıra geçsin).
+      const ghost = document.createElement('span');
+      ghost.className = 'c-ghost';
+      ghost.setAttribute('aria-hidden', 'true');
+      ghost.dataset.chord = block.chords[0].name; // yazı CSS ile çizilir, metne karışmaz
+      span.append(ghost);
+    }
+    if (block.bare && tail) {
+      tail.append(span);
+    } else {
+      line.append(span);
+      if (index < blocks.length - 1) line.append(' ');
+    }
   });
   return line;
 }
@@ -115,8 +135,37 @@ export function layoutChords(container) {
   for (const line of container.querySelectorAll('.sl--chords')) layoutLine(line);
 }
 
+// Bir akor, sözleri ayırmamak için hecesinden en fazla bu kadar (akor yazısının
+// boyunun katı) sağa kayabilir; daha fazlası gerekirse kelimeler arası açılır.
+const MAX_DRIFT = 2.5;
+
 function layoutLine(line) {
   const words = [...line.querySelectorAll('.w')];
+  for (const word of words) word.style.marginRight = '';
+  placeChords(words);
+  // Satır sonunda hecesinden geniş bir akor ekranın sağından taşıyorsa, o kelimeyi
+  // alt satıra geçir (sağına görünmez bir pay eklenir; sığmayınca tarayıcı alt satıra alır).
+  const limit = line.clientWidth;
+  for (let round = 0; round < 4; round += 1) {
+    let moved = false;
+    for (const word of words) {
+      if (word.offsetLeft <= 0) continue; // satırın ilk kelimesi: gidecek yer yok
+      for (const chord of word.querySelectorAll('.c')) {
+        const right = word.offsetLeft + chord.parentElement.offsetLeft + chord.offsetLeft + chord.offsetWidth;
+        if (right > limit + 0.5) {
+          // Kelimenin sağındaki pay satırın sonuna kadar uzanınca kelime sığmaz, alt satıra geçer.
+          word.style.marginRight = `${Math.ceil(limit - word.offsetLeft - word.offsetWidth) + 1}px`;
+          moved = true;
+          break;
+        }
+      }
+    }
+    if (!moved) break;
+    placeChords(words);
+  }
+}
+
+function placeChords(words) {
   for (const word of words) {
     word.style.paddingRight = '';
     for (const chord of word.querySelectorAll('.c')) chord.style.left = '';
@@ -126,7 +175,8 @@ function layoutLine(line) {
   let prevWord = null;
   for (const word of words) {
     const chords = [...word.querySelectorAll('.c')];
-    const gap = chords.length ? parseFloat(getComputedStyle(chords[0]).fontSize) * 0.5 : 0;
+    const size = chords.length ? parseFloat(getComputedStyle(chords[0]).fontSize) : 0;
+    const gap = size * 0.5;
     if (word.offsetTop !== rowTop) {
       rowTop = word.offsetTop;
       prevEnd = -Infinity;
@@ -135,7 +185,10 @@ function layoutLine(line) {
     chords.forEach((chord, index) => {
       let natural = word.offsetLeft + chord.parentElement.offsetLeft;
       let need = prevEnd + gap - natural;
-      if (need > 0 && index === 0 && prevWord) {
+      // Önceki blok yalnızca akorsa (sözsüz) araya boşluk açmak sorun değil; sözlerin
+      // arasını ise yalnızca akor hecesinden çok uzağa kayacaksa açarız.
+      const mayPad = prevWord && (prevWord.classList.contains('w--bare') || need > size * MAX_DRIFT);
+      if (need > 0 && index === 0 && mayPad) {
         prevWord.style.paddingRight = `${(parseFloat(prevWord.style.paddingRight) || 0) + need}px`;
         if (word.offsetTop !== rowTop) {
           // Açılan boşluk yüzünden kelime alt satıra geçti.
