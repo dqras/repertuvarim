@@ -12,7 +12,7 @@
  * [M:] [L:] [K:] alanları. Söz satırları (w:), süslemeler, çarpma notaları, akor adları
  * ("Am") ve yorumlar atlanır. Birden fazla ses (V:) varsa ilk ses alınır.
  */
-import { fifthsOf, majorTonicOf, parseTime } from './notation.js';
+import { fifthsOf, guessMode, majorTonicOf, parseTime } from './notation.js';
 
 const LETTERS = 'CDEFGAB';
 const MODE_SHIFT = { maj: 0, ion: 0, '': 0, m: -3, min: -3, aeo: -3, mix: -1, dor: -2, phr: -4, lyd: 1, loc: -5, exp: 0 };
@@ -101,6 +101,7 @@ export function parseAbc(text) {
       else if (name === 'M' && !inBody) meter = value.trim() === 'C' ? '4/4' : value.trim() === 'C|' ? '2/2' : value.trim();
       else if (name === 'K' && !inBody) {
         Object.assign(out, parseAbcKey(value));
+        out.explicitMode = /^[A-Ga-g][#b]?\s*(maj|ion|m|min|aeo|dor|phr|lyd|mix|loc)/i.test(value.trim());
         inBody = true;
       } else if (name === 'V') {
         const id = value.trim().split(/\s+/)[0];
@@ -269,6 +270,8 @@ export function parseAbc(text) {
 
   out.measures = measures;
   if (skippedChords) out.warnings.push('chords');
+  // "K:C" gibi tür yazılmamış tonlarda minör olup olmadığını notalara bakarak anla.
+  if (!out.explicitMode) out.key = guessMode(measures, out.key);
   return out;
 }
 

@@ -428,3 +428,40 @@ export function parseScoreImport(text) {
   out.code = (codeLines ?? []).join('\n').trim();
   return out;
 }
+
+/**
+ * Ton seçimi değişince notaların nereye taşınacağı.
+ * Aynı türde (minörden minöre) tonik tonik'e taşınır. Tür değişiyorsa (Do majör → La minör)
+ * hedefin donanımı esas alınır: aynı donanımlı tonlar arasında notalar yerinde kalır
+ * (yalnızca adı düzelir), farklı donanımda donanım farkı kadar taşınır.
+ * Sonuç: kaynak türünde, hedefle aynı donanımlı ton.
+ */
+export function moveTarget(from, to) {
+  if (from.mode === to.mode) return to;
+  const fifths = fifthsOf(to);
+  const same = allKeys(from.mode).find((item) => item.fifths === fifths);
+  return same ? same.key : { ...to, mode: from.mode };
+}
+
+/**
+ * Okunan bir bestenin majör mü minör mü olduğunu tahmin eder (okuyucu yalnızca donanımı
+ * görür; Do majör ile La minörü ayıramaz). Beste ilgili minörün tonik notasıyla bitiyorsa
+ * ya da minörün yükseltilmiş 7. derecesi (La minörde sol♯) geçiyorsa minör sayılır.
+ */
+export function guessMode(measures, key) {
+  if (key.mode !== 'major') return key;
+  const fifths = fifthsOf(key);
+  const minor = allKeys('minor').find((item) => item.fifths === fifths)?.key;
+  if (!minor) return key;
+  const notes = measures.flat().filter((item) => !item.rest);
+  if (!notes.length) return key;
+  const pc = (n) => mod(NATURAL[n.step] + n.alter, 12);
+  const minorTonic = mod(NATURAL[minor.step] + minor.alter, 12);
+  const majorTonic = mod(NATURAL[key.step] + key.alter, 12);
+  const leading = mod(minorTonic - 1, 12); // La minörde sol♯
+  const last = pc(notes[notes.length - 1]);
+  const leadingCount = notes.filter((n) => pc(n) === leading).length;
+  if (last === minorTonic) return minor;
+  if (last !== majorTonic && leadingCount >= 2) return minor;
+  return key;
+}
