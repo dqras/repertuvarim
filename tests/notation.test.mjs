@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  allKeys, fifthsOf, intervalBetween, keyLabel, measureProblems, parseKeyText, parseNotes,
+  allKeys, fifthsOf, guessMode, intervalBetween, keyLabel, measureProblems, moveTarget, parseKeyText, parseNotes,
   parseScoreImport, parseTime, pitchLabel, serializeNotes, signatureAlter, transposeScore,
   transposeTargets, withAccidentals,
 } from '../js/music/notation.js';
@@ -146,4 +146,39 @@ test('çift çizgiyle bölünmüş ölçü hata sayılmaz; gerçekten eksik öl�
   // "fa2." (3 vuruş) + "do8 do8" (1 vuruş) = bölünmüş tek ölçü; 2. ölçüde bir nota eksik
   const { measures } = parseNotes('do4:8 do4 | do4:4 fa4:8 fa4 fa4:4 fa4:8 | sol4:4 la4 si4 la4 | fa4:2. | do4:8 do4 | do4:4 fa4:8 fa4 fa4:4 mi4:8 fa4 |', key, parseTime('4/4'));
   assert.deepEqual(measureProblems(measures, parseTime('4/4')).map((p) => p.index), [1]);
+});
+
+test('bütün tonların donanımı kaynak tabloyla aynı (30 ton)', () => {
+  const MAJOR = { 0: 'Do', 1: 'Sol', 2: 'Re', 3: 'La', 4: 'Mi', 5: 'Si', 6: 'Fa♯', 7: 'Do♯', '-1': 'Fa', '-2': 'Si♭', '-3': 'Mi♭', '-4': 'La♭', '-5': 'Re♭', '-6': 'Sol♭', '-7': 'Do♭' };
+  const MINOR = { 0: 'La', 1: 'Mi', 2: 'Si', 3: 'Fa♯', 4: 'Do♯', 5: 'Sol♯', 6: 'Re♯', 7: 'La♯', '-1': 'Re', '-2': 'Sol', '-3': 'Do', '-4': 'Fa', '-5': 'Si♭', '-6': 'Mi♭', '-7': 'La♭' };
+  for (const [mode, table] of [['major', MAJOR], ['minor', MINOR]]) {
+    for (const item of allKeys(mode)) assert.equal(keyLabel(item.key).split(' ')[0], table[item.fifths], `${mode} ${item.fifths}`);
+  }
+  // diyez sırası fa do sol re la mi si, bemol sırası si mi la re sol do fa
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7].map((f) => [0, 1, 2, 3, 4, 5, 6].filter((s) => signatureAlter(f, s) === 1).length), [1, 2, 3, 4, 5, 6, 7]);
+  assert.equal(signatureAlter(2, 0), 1); // Re majör: do♯
+  assert.equal(signatureAlter(0, 0), 0); // La minör: do♯ yok
+  assert.equal(signatureAlter(-3, 5), -1); // Do minör: la♭
+});
+
+test('aynı donanımlı tonlar arasında notalar yer değiştirmez (Do majör → La minör: do♯ çıkmaz)', () => {
+  const from = parseKeyText('do majör');
+  const to = parseKeyText('la minör');
+  const { measures } = parseNotes('la4:4 si4 do5 re5 | mi5 fa5 sol#5 la5 |', from, parseTime('4/4'));
+  const target = moveTarget(from, to);
+  assert.deepEqual(target, from);
+  const out = transposeScore(measures, from, target);
+  assert.equal(serializeNotes(out.measures, to), 'la4:4 si4 do5 re5 | mi5 fa5 sol#5 la5 |');
+  // farklı donanım: Do majör → Si minör (2♯) notalar Re majöre göre taşınır
+  const si = transposeScore(measures, from, moveTarget(from, parseKeyText('si minör')));
+  assert.equal(serializeNotes(si.measures, parseKeyText('si minör')), 'si4:4 do5 re5 mi5 | fa5 sol5 la#5 si5 |');
+});
+
+test('okunan beste: tür yazılmamışsa minör olduğu notalardan anlaşılır', () => {
+  const C = parseKeyText('do majör');
+  const parse = (code) => parseNotes(code, C, parseTime('4/4')).measures;
+  assert.equal(keyLabel(guessMode(parse('do4 re4 mi4 fa4 | sol4 la4 si4 do5 |'), C)), 'Do majör');
+  assert.equal(keyLabel(guessMode(parse('la4 si4 do5 re5 | mi5 fa5 sol#5 la5 |'), C)), 'La minör');
+  assert.equal(keyLabel(guessMode(parse('mi4 sol#4 si4 sol#4 | la4:1 |'), C)), 'La minör');
+  assert.equal(keyLabel(guessMode(parse('la4 si4 | do5:2 |'), C)), 'Do majör');
 });
