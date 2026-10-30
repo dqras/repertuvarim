@@ -15,7 +15,7 @@ import { compareText } from '../lib/text.js';
 import { describeStorageError } from '../data/db.js';
 import {
   DURATIONS, DURATION_NAMES, STEP_NAMES, SCORE_HEADER, TIME_SIGNATURES, allKeys, diatonic, fifthsOf,
-  keyLabel, measureProblems, parseNotes, parseScoreImport, parseTime, pitchLabel, serializeNotes, signatureLabel, transposeScore,
+  keyLabel, measureProblems, moveTarget, parseNotes, parseScoreImport, parseTime, pitchLabel, serializeNotes, signatureLabel, transposeScore,
   transposeTargets,
 } from '../music/notation.js';
 import { watchStaff } from '../music/staff.js';
@@ -307,7 +307,14 @@ export function createScoreEditor(root, actions) {
       refresh();
       return;
     }
-    const moved = transposeScore(measures, from, { ...to, mode: from.mode });
+    const target = moveTarget(from, to);
+    if (sameKey(target, from)) {
+      // Aynı donanım (ör. Do majör → La minör): notalar yerinde, yalnızca tonun adı değişir.
+      refresh();
+      showReadNotice([el('p', { class: 'notice__text', id: 'sc-key-moved', text: `Ton ${keyLabel(to)} olarak değişti. Donanım aynı olduğu için notalar yerinde kaldı.` })]);
+      return;
+    }
+    const moved = transposeScore(measures, from, target);
     ui.code.value = serializeNotes(moved.measures, to);
     refresh();
     const first = moved.measures.flat().find((item) => !item.rest);
