@@ -365,7 +365,7 @@ export function createScoreEditor(root, actions) {
     const problems = measureProblems(result.measures, parseTime(result.time));
     const notes = [];
     notes.push(`${result.measures.length} ölçü okundu: ${keyLabel(result.key)}, ${result.time}${result.clef === 'bass' ? ', fa anahtarı' : ''}.`);
-    if (problems.length) notes.push(`${problems.length} ölçünün süresi tutmuyor (porte altında yazıyor); fotoğrafla karşılaştırıp düzeltin.`);
+    if (problems.length) notes.push(`${problems.length} ölçünün süresi tutmuyor (portede kırmızı); okuyucu orada bir nota atlamış ya da süreyi yanlış okumuş olabilir. Fotoğrafla karşılaştırıp düzeltin.`);
     else notes.push('Okuma hatası olabilir: porteyi fotoğrafla karşılaştırın.');
     if (result.warnings.includes('chords')) notes.push('Akorlu yerlerde yalnızca en üstteki nota (ezgi) alındı.');
     if (result.failed?.length) notes.push(`${result.failed.map((f) => f.page).join(', ')}. sayfa okunamadı.`);
@@ -490,7 +490,9 @@ export function createScoreEditor(root, actions) {
 
   function previewOptions() {
     const key = readKey();
-    return { measures: parsed().measures, fifths: fifthsOf(key) ?? 0, time: parseTime(state.ui.time.value), showNames: true, scale: 0.9, clef: state.ui.clef.value };
+    const { measures } = parsed();
+    const highlight = new Set(measureProblems(measures, parseTime(state.ui.time.value)).map((p) => p.index));
+    return { measures, fifths: fifthsOf(key) ?? 0, time: parseTime(state.ui.time.value), showNames: true, scale: 0.9, clef: state.ui.clef.value, highlight };
   }
 
   function refresh() {
@@ -499,7 +501,7 @@ export function createScoreEditor(root, actions) {
     const problems = measureProblems(measures, parseTime(state.ui.time.value));
     const parts = [];
     if (errors.length) parts.push(`Anlaşılmayan: ${errors.slice(0, 4).map((e) => `“${e.token}”`).join(', ')}.`);
-    if (problems.length) parts.push(`Süresi ölçüye uymayan ölçü: ${problems.slice(0, 5).map((p) => p.index + 1).join(', ')}. ölçü.`);
+    if (problems.length) parts.push(`Süresi ölçüye uymayan ölçü (portede kırmızı): ${problems.slice(0, 8).map((p) => p.index + 1).join(', ')}${problems.length > 8 ? '…' : ''}.`);
     state.ui.problems.textContent = parts.join(' ');
     state.ui.problems.hidden = parts.length === 0;
     updateKeyboard();
