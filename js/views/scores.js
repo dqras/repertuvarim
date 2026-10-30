@@ -25,7 +25,7 @@ import { OmrError, getReaderToken, looksLikeToken, readScorePhotos, setReaderTok
 /** Notalar listesinde seçilen fotoğraflar: form açılınca okunmaya başlar. */
 let pendingPhotos = null;
 
-const PRIVACY = 'Fotoğraf, okunması için Hugging Face’teki ücretsiz LEGATO nota okuyucusuna gönderilir; internet gerekir. En iyi sonuç için notayı düz, iyi ışıkta ve sayfayı dolduracak şekilde çekin.';
+const PRIVACY = 'Fotoğraf telefonunuzda okunur; internet gerekmez, fotoğraf hiçbir yere gönderilmez. En iyi sonuç için notayı düz, iyi ışıkta ve sayfayı dolduracak şekilde çekin. Sonuç iyi değilse “Gelişmiş okuyucuyla dene” ile Hugging Face’teki ücretsiz LEGATO okuyucusunu kullanabilirsiniz (internet gerekir, fotoğraf oraya gönderilir).';
 
 /** Okuyucunun günlük ücretsiz hakkı hakkında kısa açıklama. */
 function quotaText(error) {
@@ -429,7 +429,15 @@ export function createScoreEditor(root, actions) {
     box.classList.toggle('is-busy', busy);
   }
 
-  async function readPhotos(files) {
+  /** Gelişmiş okuyucu (LEGATO, internet gerekir) ile yeniden okuma düğmesi. */
+  function advancedButton(files) {
+    return el('button', { type: 'button', class: 'button button--quiet button--small', id: 'sc-read-advanced', onclick: () => {
+      if (readUndo) undoRead();
+      readPhotos(files, 'advanced');
+    } }, 'Gelişmiş okuyucuyla dene');
+  }
+
+  async function readPhotos(files, engine = 'local') {
     if (state.reading) return;
     state.reading = true;
     const { ui } = state;
@@ -437,14 +445,16 @@ export function createScoreEditor(root, actions) {
     const progressText = ({ step, page, pages }) => {
       const which = pages > 1 ? ` (${page}/${pages}. sayfa)` : '';
       if (step === 'waking') return `Nota okuyucusu uyanıyor${which}… İlk seferde bir-iki dakika sürebilir.`;
-      if (step === 'upload') return `Fotoğraf gönderiliyor${which}…`;
+      if (step === 'local') return `Notalar telefonunuzda okunuyor${which}…`;
+      if (step === 'upload') return `Fotoğraf gelişmiş okuyucuya gönderiliyor${which}…`;
       return `Notalar okunuyor${which}… Genellikle yarım dakika sürer.`;
     };
-    showReadNotice([el('p', { class: 'notice__text', id: 'sc-read-progress' }, el('span', { class: 'spinner', 'aria-hidden': 'true' }), progressText({ step: 'upload', page: 1, pages: files.length }))], { busy: true });
+    showReadNotice([el('p', { class: 'notice__text', id: 'sc-read-progress' }, el('span', { class: 'spinner', 'aria-hidden': 'true' }), progressText({ step: engine === 'local' ? 'local' : 'upload', page: 1, pages: files.length }))], { busy: true });
     ui.readNotice.scrollIntoView({ block: 'center', behavior: 'smooth' });
     let result;
     try {
       result = await readScorePhotos(files, {
+        engine,
         onProgress: (progress) => {
           const text = document.getElementById('sc-read-progress');
           if (text) text.lastChild.textContent = progressText(progress);
@@ -456,7 +466,10 @@ export function createScoreEditor(root, actions) {
       const messages = {
         offline: 'Fotoğraftan okumak için internet gerekiyor. Bağlantınızı kontrol edip tekrar deneyin.',
         image: 'Bu dosya açılamadı. Bir fotoğraf ya da PDF seçin.',
-        empty: 'Fotoğrafta nota bulunamadı. Porteyi yakından, düz ve iyi ışıkta çekip tekrar deneyin.',
+        empty: engine === 'local'
+          ? 'Fotoğraftaki notalar okunamadı. Notayı düz, iyi ışıkta ve sayfayı dolduracak şekilde çekip tekrar deneyin ya da gelişmiş okuyucuyla deneyin (internet gerekir).'
+          : 'Fotoğrafta nota bulunamadı. Porteyi yakından, düz ve iyi ışıkta çekip tekrar deneyin.',
+        pdf: 'Telefondaki okuyucu PDF dosyası açamaz. Sayfanın ekran görüntüsünü seçin ya da gelişmiş okuyucuyla deneyin (internet gerekir).',
         busy: 'Nota okuyucusu şu an çok yoğun. Birkaç dakika sonra tekrar deneyin.',
         timeout: 'Okuma çok uzun sürdü. Biraz sonra tekrar deneyin.',
         server: 'Nota okuyucusuna şu an ulaşılamıyor. Biraz sonra tekrar deneyin; olmazsa notaları elle yazabilirsiniz.',
@@ -464,9 +477,11 @@ export function createScoreEditor(root, actions) {
         token: 'Kayıtlı Hugging Face anahtarı kabul edilmedi (silinmiş ya da yanlış olabilir). Anahtarı değiştirin ya da silin.',
       };
       const retry = el('button', { type: 'button', class: 'button button--quiet button--small', id: 'sc-read-retry', onclick: () => readPhotos(files) }, 'Tekrar dene');
+      const retryAdvanced = el('button', { type: 'button', class: 'button button--quiet button--small', id: 'sc-read-retry', onclick: () => readPhotos(files, 'advanced') }, 'Tekrar dene');
       const actions = reason === 'quota' || reason === 'token'
-        ? [tokenButton('sc-read-token', () => readPhotos(files))]
-        : ['server', 'busy', 'timeout', 'offline'].includes(reason) ? [retry] : [];
+        ? [tokenButton('sc-read-token', () => readPhotos(files, 'advanced'))]
+        : engine === 'local' && ['empty', 'pdf'].includes(reason) ? [advancedButton(files)]
+          : ['server', 'busy', 'timeout', 'offline'].includes(reason) ? [engine === 'local' ? retry : retryAdvanced] : [];
       showReadNotice([
         el('p', { class: 'notice__text', id: 'sc-read-error', text: messages[reason] ?? messages.server }),
         actions.length ? el('div', { class: 'notice__actions' }, ...actions) : null,
@@ -498,7 +513,7 @@ export function createScoreEditor(root, actions) {
 
     const problems = measureProblems(result.measures, parseTime(result.time));
     const notes = [];
-    notes.push(`${result.measures.length} ölçü okundu: ${keyLabel(result.key)}, ${result.time}${result.clef === 'bass' ? ', fa anahtarı' : ''}.`);
+    notes.push(`${result.measures.length} ölçü ${engine === 'local' ? 'telefonda ' : ''}okundu: ${keyLabel(result.key)}, ${result.time}${result.clef === 'bass' ? ', fa anahtarı' : ''}.`);
     if (problems.length) notes.push(`${problems.length} ölçünün süresi tutmuyor (portede kırmızı); okuyucu orada bir nota atlamış ya da süreyi yanlış okumuş olabilir. Fotoğrafla karşılaştırıp düzeltin.`);
     else notes.push('Okuma hatası olabilir: porteyi fotoğrafla karşılaştırın.');
     if (result.warnings.includes('chords')) notes.push('Akorlu yerlerde yalnızca en üstteki nota (ezgi) alındı.');
@@ -506,7 +521,8 @@ export function createScoreEditor(root, actions) {
     showReadNotice([
       el('p', { class: 'notice__text', text: notes.join(' ') }),
       el('div', { class: 'notice__actions' },
-        el('button', { type: 'button', class: 'button button--quiet button--small', id: 'sc-read-undo', onclick: undoRead }, 'Geri al')),
+        el('button', { type: 'button', class: 'button button--quiet button--small', id: 'sc-read-undo', onclick: undoRead }, 'Geri al'),
+        engine === 'local' ? advancedButton(files) : null),
     ]);
     if (!ui.title.value.trim()) ui.title.focus();
   }
