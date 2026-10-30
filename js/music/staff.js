@@ -7,7 +7,7 @@
  * Bütün şekiller burada çizilir (yazı tipine bağlı müzik simgesi kullanılmaz), böylece her
  * telefonda aynı görünür.
  */
-import { beats, diatonic, pitchLabel, signatureSteps, withAccidentals } from './notation.js';
+import { beats, diatonic, pitchLabel, signatureMarks, withAccidentals } from './notation.js';
 
 // Fa anahtarında notalar, sol anahtarındaki yerlerine göre 12 basamak (bir oktav + üçlü) yukarıda
 // çizilir; böylece çizim kodu tek bir porte düzenini kullanır.
@@ -189,10 +189,10 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
   if (clef === 'bass') bassClef(g, s * 0.4, yOf, s);
   else trebleClef(g, s * 0.4, yOf, s);
   let x = clef === 'bass' ? s * 4.8 : s * 3.2;
-  const sigSteps = signatureSteps(fifths);
-  for (const step of sigSteps) {
-    const sigPos = (fifths > 0 ? SHARP_POS[step] : FLAT_POS[step]) - (clef === 'bass' ? 2 : 0);
-    accidental(g, fifths > 0 ? 1 : -1, x, yOf(sigPos), s);
+  // Donanım: majör/minörde yalnız diyez ya da yalnız bemol; Hicaz gibi makamlarda ikisi birlikte.
+  for (const { step, alter } of signatureMarks(fifths)) {
+    const sigPos = (alter > 0 ? SHARP_POS[step] : FLAT_POS[step]) - (clef === 'bass' ? 2 : 0);
+    accidental(g, alter, x, yOf(sigPos), s);
     x += s * 1.05;
   }
   x += s * 0.4;
@@ -362,14 +362,15 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
 
 /**
  * Besteyi container içine çizer.
- * options: { measures, fifths, time: {num, den}, showNames, scale }
+ * options: { measures, signature (ya da fifths), time: {num, den}, showNames, scale }
  */
-export function renderStaff(container, { measures, fifths, time, showNames = true, scale = 1, clef = 'treble', highlight = null }) {
+export function renderStaff(container, { measures, fifths: oldFifths, signature, time, showNames = true, scale = 1, clef = 'treble', highlight = null }) {
+  const fifths = signature ?? oldFifths ?? 0; // sayı (işaret sayısı) ya da [{ step, alter }]
   clefShift = clef === 'bass' ? 12 : 0;
   const s = 9.5 * scale; // porte aralığı (piksel)
   const width = Math.max(240, Math.floor(container.clientWidth || 320));
   const marked = withAccidentals(measures, fifths);
-  const headerWidth = (clef === 'bass' ? s * 5.2 : s * 3.6) + signatureSteps(fifths).length * s * 1.05 + s * 0.4;
+  const headerWidth = (clef === 'bass' ? s * 5.2 : s * 3.6) + signatureMarks(fifths).length * s * 1.05 + s * 0.4;
   const firstExtra = s * 2.2;
 
   // Ölçüleri satırlara dağıt

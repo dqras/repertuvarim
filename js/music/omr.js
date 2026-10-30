@@ -7,6 +7,8 @@
  * çevrilir. İnternet gerekir; fotoğraf okunmak için bu sunucuya gönderilir.
  *
  * Sunucu bir süre kullanılmazsa uykuya geçer; ilk istekte uyanması bir-iki dakika sürebilir.
+ * Okuyucunun ücretsiz günlük kullanım hakkı vardır (anahtarsız birkaç okuma); hak dolunca
+ * sebebi 'quota' hatasıyla bildirilir. İsteğe bağlı ücretsiz anahtar hakkı artırır.
  */
 import { parseAbc } from './abc.js';
 
@@ -15,10 +17,61 @@ const MAX_SIDE = 2200; // gönderilmeden önce fotoğraf en fazla bu boyuta kü�
 const WAIT_LIMIT_MS = 4 * 60 * 1000;
 
 export class OmrError extends Error {
-  constructor(reason, message) {
+  constructor(reason, message, extra = {}) {
     super(message ?? reason);
-    this.reason = reason; // 'offline' | 'server' | 'busy' | 'image' | 'empty' | 'timeout'
+    // 'offline' | 'server' | 'busy' | 'quota' | 'token' | 'image' | 'empty' | 'timeout'
+    this.reason = reason;
+    Object.assign(this, extra); // quota: { retrySeconds, withToken }
   }
+}
+
+/*
+ * İsteğe bağlı Hugging Face anahtarı (token). Okuyucu, anahtarsız kullanımda günde yalnızca
+ * birkaç okumaya izin verir; ücretsiz bir Hugging Face hesabının anahtarıyla bu hak artar.
+ * Anahtar yalnızca bu cihazda saklanır ve yalnızca okuyucuya gönderilir; yedeğe girmez.
+ */
+const TOKEN_KEY = 'repertuvarim:hfToken';
+export function getReaderToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+export function setReaderToken(token) {
+  const value = String(token ?? '').trim();
+  try {
+    if (value) localStorage.setItem(TOKEN_KEY, value);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* saklanamazsa anahtarsız devam edilir */
+  }
+  return value;
+}
+/** Anahtar biçimi doğru mu? (hf_ ile başlar, boşluk içermez) */
+export const looksLikeToken = (token) => /^hf_[A-Za-z0-9]{20,}$/.test(String(token ?? '').trim());
+
+function authHeaders(extra = {}) {
+  const token = getReaderToken();
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra;
+}
+
+/** "Try again in 1:23:45" → saniye; yoksa null. */
+function retrySeconds(message) {
+  const m = /try again in (\d+):(\d{2}):(\d{2})/i.exec(message ?? '');
+  if (!m) return null;
+  return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+}
+
+/** Okuyucunun hata yazısını uygulamanın hata türüne çevirir. */
+export function errorFromMessage(message) {
+  const text = String(message ?? '');
+  if (/quota/i.test(text)) {
+    return new OmrError('quota', text, { retrySeconds: retrySeconds(text), withToken: Boolean(getReaderToken()) });
+  }
+  if (/token|unauthori[sz]ed|401/i.test(text)) return new OmrError('token', text);
+  if (/queue|busy|too many/i.test(text)) return new OmrError('busy', text);
+  return new OmrError('server', text || 'no result');
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -60,6 +113,7 @@ async function request(url, options, onWaking) {
     if (response?.ok) return response;
     // Uyuyan sunucu uyanırken 502/503 döner; bir süre bekleyip tekrar dene.
     if (Date.now() - started > WAIT_LIMIT_MS) throw new OmrError(response ? 'server' : 'offline');
+    if (response && [401, 403].includes(response.status) && getReaderToken()) throw new OmrError('token', `HTTP ${response.status}`);
     if (response && ![404, 429, 500, 502, 503, 504].includes(response.status)) throw new OmrError('server', `HTTP ${response.status}`);
     if (response?.status === 429) throw new OmrError('busy');
     onWaking?.();
@@ -71,15 +125,53 @@ async function request(url, options, onWaking) {
   }
 }
 
-/** Bir sunucu-gönderimli-olay akışından sonucu okur ("event: complete / data: [...]"). */
-function readEvents(text) {
-  const events = [];
-  for (const block of text.split(/\n\n+/)) {
-    const event = /^event:\s*(.+)$/m.exec(block)?.[1]?.trim();
-    const data = /^data:\s*(.*)$/m.exec(block)?.[1];
-    if (event) events.push({ event, data });
+/**
+ * Kuyruk akışını okur ("data: {msg: …}" satırları) ve sonucu bekler.
+ * Sonuç gelince { success, output } döner.
+ */
+async function readQueue(response, signal) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (value) buffer += decoder.decode(value, { stream: true });
+      let cut;
+      while ((cut = buffer.indexOf('\n\n')) !== -1) {
+        const block = buffer.slice(0, cut);
+        buffer = buffer.slice(cut + 2);
+        const line = block.split('\n').find((l) => l.startsWith('data:'));
+        if (!line) continue;
+        let message;
+        try {
+          message = JSON.parse(line.slice(5).trim());
+        } catch {
+          continue;
+        }
+        if (message.msg === 'process_completed') return message;
+        if (message.msg === 'unexpected_error') return { success: false, output: { error: message.message } };
+        if (message.msg === 'close_stream') return null;
+      }
+      if (done || signal.aborted) return null;
+    }
+  } finally {
+    reader.cancel().catch(() => {});
   }
-  return events;
+}
+
+/** Okuma işlevinin sıra numarası (sunucu güncellenirse değişebilir; bulunamazsa 2). */
+let readerIndex = null;
+async function findReaderIndex() {
+  if (readerIndex !== null) return readerIndex;
+  try {
+    const config = await (await fetch(`${OMR_SERVER}/config`, { headers: authHeaders() })).json();
+    const found = config.dependencies?.find((d) => d.api_name === 'run_legato');
+    if (found) readerIndex = Number.isInteger(found.id) ? found.id : config.dependencies.indexOf(found);
+  } catch {
+    /* sunucu uyanıyor olabilir; varsayılanla devam */
+  }
+  return readerIndex ?? 2;
 }
 
 /**
@@ -94,41 +186,40 @@ export async function readScorePhoto(file, { onProgress } = {}) {
 
   const form = new FormData();
   form.append('files', blob, file.type === 'application/pdf' ? 'nota.pdf' : 'nota.jpg');
-  const uploaded = await (await request(`${OMR_SERVER}/gradio_api/upload`, { method: 'POST', body: form }, waking)).json();
+  const uploaded = await (await request(`${OMR_SERVER}/gradio_api/upload`, { method: 'POST', headers: authHeaders(), body: form }, waking)).json();
   const path = uploaded?.[0];
   if (!path) throw new OmrError('server', 'upload');
 
   onProgress?.({ step: 'reading' });
-  const start = await (await request(`${OMR_SERVER}/gradio_api/call/run_legato`, {
+  // Kuyruğa katıl: hata olursa (ör. günlük hak dolduysa) okuyucu sebebini burada söyler.
+  const session = Math.random().toString(36).slice(2, 13);
+  const fnIndex = await findReaderIndex();
+  const joined = await (await request(`${OMR_SERVER}/gradio_api/queue/join`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data: [{ path, meta: { _type: 'gradio.FileData' } }] }),
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ data: [{ path, meta: { _type: 'gradio.FileData' } }], event_data: null, fn_index: fnIndex, trigger_id: null, session_hash: session }),
   }, waking)).json();
-  if (!start?.event_id) throw new OmrError('server', 'no event');
+  if (!joined?.event_id) throw new OmrError('server', 'no event');
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), WAIT_LIMIT_MS);
-  let text;
+  let finished;
   try {
-    text = await (await fetch(`${OMR_SERVER}/gradio_api/call/run_legato/${start.event_id}`, { signal: controller.signal })).text();
-  } catch {
+    const stream = await fetch(`${OMR_SERVER}/gradio_api/queue/data?session_hash=${session}`, { headers: authHeaders(), signal: controller.signal });
+    if (!stream.ok) throw new OmrError('server', `HTTP ${stream.status}`);
+    finished = await readQueue(stream, controller.signal);
+  } catch (error) {
+    if (error instanceof OmrError) throw error;
+    if (navigator.onLine === false) throw new OmrError('offline');
     throw new OmrError(controller.signal.aborted ? 'timeout' : 'server');
   } finally {
     clearTimeout(timer);
   }
-  const events = readEvents(text);
-  const done = events.find((e) => e.event === 'complete');
-  if (!done) {
-    const failed = events.find((e) => e.event === 'error');
-    throw new OmrError(failed && /queue|busy|quota/i.test(failed.data ?? '') ? 'busy' : 'server', failed?.data ?? 'no result');
-  }
-  let abc = '';
-  try {
-    abc = JSON.parse(done.data)?.[0] ?? '';
-  } catch {
-    abc = '';
-  }
-  const result = parseAbc(abc);
+  if (!finished) throw new OmrError(controller.signal.aborted ? 'timeout' : 'server', 'no result');
+  if (!finished.success) throw errorFromMessage(finished.output?.error ?? finished.title);
+
+  const abc = finished.output?.data?.[0];
+  const result = parseAbc(typeof abc === 'string' ? abc : '');
   if (!result.measures.length) throw new OmrError('empty');
   return { ...result, abc };
 }
@@ -151,7 +242,7 @@ export async function readScorePhotos(files, { onProgress } = {}) {
       }
     } catch (error) {
       if (!combined && index === files.length - 1) throw error;
-      if (error instanceof OmrError && error.reason === 'offline') throw error;
+      if (error instanceof OmrError && ['offline', 'quota', 'token'].includes(error.reason)) throw error;
       failed.push({ page: index + 1, error });
     }
   }

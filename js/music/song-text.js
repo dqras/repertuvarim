@@ -20,6 +20,7 @@ import {
   transposeChord,
   transposeKey,
 } from './chords.js';
+import { cleanText, foldLetters } from '../lib/text.js';
 
 const INLINE_CHORD = /\[([^\]\n]*)\]/g;
 const TAB_WIDTH = 8;
@@ -132,7 +133,7 @@ function expandTabs(line) {
  *   kind: 'chord' | 'repeat' (x2) | 'bar' (| / -)
  */
 export function parseChordLine(line) {
-  const value = expandTabs(String(line ?? '').normalize('NFC'));
+  const value = expandTabs(cleanText(line));
   if (!value.trim() || /[[\]]/.test(value)) return null;
   const tokens = [...value.matchAll(/\S+/g)].map((match) => ({ column: match.index, text: match[0] }));
 
@@ -195,10 +196,10 @@ export function convertChordSheet(content) {
       !isSectionLabel(next);
 
     if (canMerge) {
-      output.push(mergeIntoLyric(chordLine.tokens, expandTabs(next.normalize('NFC'))));
+      output.push(mergeIntoLyric(chordLine.tokens, expandTabs(cleanText(next))));
       index += 1; // söz satırı birleştirildi
     } else {
-      output.push(convertInPlace(chordLine, expandTabs(lines[index].normalize('NFC'))));
+      output.push(convertInPlace(chordLine, expandTabs(cleanText(lines[index]))));
     }
   }
   return { text: output.join('\n'), converted };
@@ -247,14 +248,14 @@ export const IMPORT_HEADER = 'Repertuvarım aktarım';
 export function parseImport(text) {
   const lines = String(text ?? '').replace(/\r\n?/g, '\n').split('\n');
   const start = lines.findIndex((line) => line.trim() !== '');
-  if (start === -1 || lines[start].trim() !== IMPORT_HEADER) return null;
+  if (start === -1 || foldLetters(lines[start]).trim() !== foldLetters(IMPORT_HEADER)) return null;
 
   const fields = { title: '', artist: '', key: '', source: '' };
-  const names = { 'şarkı': 'title', 'sanatçı': 'artist', ton: 'key', kaynak: 'source' };
+  const names = { 'şarki': 'title', 'sanatçi': 'artist', ton: 'key', kaynak: 'source' };
   let index = start + 1;
   for (; index < lines.length; index += 1) {
     const match = /^\s*([^:]+):\s*(.*)$/.exec(lines[index]);
-    const name = match && names[match[1].trim().toLocaleLowerCase('tr-TR')];
+    const name = match && names[foldLetters(match[1]).trim()];
     if (!name) break;
     fields[name] = match[2].trim();
   }

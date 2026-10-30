@@ -18,6 +18,8 @@
  * Ekrana çizerken ve koda geri yazarken işaretler yine kâğıttaki kurallara göre hesaplanır.
  */
 
+import { foldLetters } from '../lib/text.js';
+
 export const STEP_NAMES = ['do', 're', 'mi', 'fa', 'sol', 'la', 'si'];
 const NATURAL = [0, 2, 4, 5, 7, 9, 11];
 export const DURATIONS = [1, 2, 4, 8, 16, 32];
@@ -38,17 +40,35 @@ const mod = (n, m) => ((n % m) + m) % m;
 // --- Tonlar ve donanım -------------------------------------------------------------
 
 /**
- * Ton: { step, alter, mode: 'major' | 'minor' }.
- * fifths: donanımdaki diyez (+) ya da bemol (−) sayısı.
+ * Ton: { step, alter, mode }.
+ * mode: 'major' | 'minor' ya da Türk müziği makamları 'hicaz' | 'rast' | 'nihavend'.
+ * fifths: majör/minör donanımındaki diyez (+) ya da bemol (−) sayısı.
+ *
+ * Makamlar (12 sesli düzende, koma sesleri en yakın notayla yazılır):
+ *  - Rast: majör dizinin donanımı (Sol Rast fa♯, Do Rast donanımsız, Re Rast fa♯ do♯).
+ *  - Nihavend: doğal minörün donanımı (Sol Nihavend si♭ mi♭, La Nihavend donanımsız,
+ *    Re Nihavend si♭, Do Nihavend mi♭ la♭ si♭).
+ *  - Hicaz: kendine özgü donanım; 2. derece küçük, 3. derece büyük (artık ikili),
+ *    4. ve 5. tam, 6. derece doğal harf (küçük ya da büyük altılı), 7. derece küçük:
+ *    La Hicaz si♭ do♯, Mi Hicaz sol♯, Re Hicaz mi♭ fa♯, Sol Hicaz la♭.
+ *    Donanımda bemol ve diyez birlikte olabilir.
  */
+export const MAKAMS = ['hicaz', 'rast', 'nihavend'];
+export const MODE_NAMES = { major: 'majör', minor: 'minör', hicaz: 'Hicaz', rast: 'Rast', nihavend: 'Nihavend' };
+const BASE_MODE = { rast: 'major', nihavend: 'minor' };
+export const isMakam = (key) => MAKAMS.includes(key?.mode);
+
 export function majorTonicOf(fifths) {
   const step = mod(fifths * 4, 7);
   const pc = mod(fifths * 7, 12);
   return { step, alter: pc - NATURAL[step] > 6 ? pc - NATURAL[step] - 12 : pc - NATURAL[step] < -6 ? pc - NATURAL[step] + 12 : pc - NATURAL[step] };
 }
 
-/** Tonun donanımındaki işaret sayısı (−7..7); geçersizse null. */
+/** Majör/minör (ve Rast/Nihavend) donanımındaki işaret sayısı (−7..7); Hicaz ya da geçersizse null. */
 export function fifthsOf(key) {
+  if (!key) return null;
+  if (BASE_MODE[key.mode]) return fifthsOf({ ...key, mode: BASE_MODE[key.mode] });
+  if (key.mode !== 'major' && key.mode !== 'minor') return null;
   const major = key.mode === 'minor'
     ? { step: mod(key.step + 2, 7), pc: mod(NATURAL[key.step] + key.alter + 3, 12) }
     : { step: key.step, pc: mod(NATURAL[key.step] + key.alter, 12) };
@@ -59,16 +79,66 @@ export function fifthsOf(key) {
   return null;
 }
 
+/** Hicaz donanımı: [{ step, alter }] (çizim sırasıyla); yazılamıyorsa null. */
+function hicazMarks(key) {
+  const tonic = NATURAL[key.step] + key.alter;
+  const intervals = [0, 1, 4, 5, 7, null, 10];
+  const marks = [];
+  for (let degree = 0; degree < 7; degree += 1) {
+    const step = (key.step + degree) % 7;
+    const natural = NATURAL[step] + (key.step + degree >= 7 ? 12 : 0) - tonic;
+    const alter = degree === 5
+      ? (natural < 8 ? 8 - natural : natural > 9 ? 9 - natural : 0)
+      : intervals[degree] - natural;
+    if (Math.abs(alter) > 1) return null;
+    if (alter) marks.push({ step, alter });
+  }
+  return sortMarks(marks);
+}
+
+/** Donanım işaretlerini kâğıttaki sıraya koyar: önce bemoller (si mi la …), sonra diyezler (fa do sol …). */
+function sortMarks(marks) {
+  const flats = FLAT_ORDER.map((step) => marks.find((m) => m.step === step && m.alter < 0)).filter(Boolean);
+  const sharps = SHARP_ORDER.map((step) => marks.find((m) => m.step === step && m.alter > 0)).filter(Boolean);
+  return [...flats, ...sharps];
+}
+
+/**
+ * Tonun donanımı: majör/minör/Rast/Nihavend için işaret sayısı (sayı),
+ * Hicaz için işaret listesi [{ step, alter }]. Geçersiz tonda null.
+ */
+export function signatureOf(key) {
+  if (!key) return null;
+  if (key.mode === 'hicaz') return hicazMarks(key);
+  return fifthsOf(key);
+}
+
+/** Ton tanınıyor ve yazılabiliyor mu? */
+export const isKnownKey = (key) => Boolean(key) && Number.isInteger(key.step) && signatureOf(key) !== null;
+
+/** Donanımdaki işaretler, çizim sırasıyla: [{ step, alter }]. */
+export function signatureMarks(signature) {
+  if (Array.isArray(signature)) return signature;
+  const fifths = Number(signature) || 0;
+  return fifths >= 0
+    ? SHARP_ORDER.slice(0, fifths).map((step) => ({ step, alter: 1 }))
+    : FLAT_ORDER.slice(0, -fifths).map((step) => ({ step, alter: -1 }));
+}
+
 /** Donanımın bir basamağa uyguladığı işaret (−1, 0, 1). */
-export function signatureAlter(fifths, step) {
-  if (fifths > 0 && SHARP_ORDER.slice(0, fifths).includes(step)) return 1;
-  if (fifths < 0 && FLAT_ORDER.slice(0, -fifths).includes(step)) return -1;
-  return 0;
+export function signatureAlter(signature, step) {
+  return signatureMarks(signature).find((mark) => mark.step === step)?.alter ?? 0;
 }
 
 /** Donanımdaki işaretlerin basamakları, çizim sırasıyla. */
-export function signatureSteps(fifths) {
-  return fifths >= 0 ? SHARP_ORDER.slice(0, fifths) : FLAT_ORDER.slice(0, -fifths);
+export function signatureSteps(signature) {
+  return signatureMarks(signature).map((mark) => mark.step);
+}
+
+/** İki donanım aynı mı? (sayı ya da liste olabilir) */
+export function sameSignature(a, b) {
+  const text = (sig) => signatureMarks(sig).map((m) => `${m.step}:${m.alter}`).sort().join(' ');
+  return text(a) === text(b);
 }
 
 const ALTER_SIGN = { '-2': '♭♭', '-1': '♭', 0: '', 1: '♯', 2: '𝄪' };
@@ -78,20 +148,40 @@ export function pitchLabel(step, alter = 0) {
   return STEP_NAMES[step] + (ALTER_SIGN[alter] ?? '');
 }
 
-/** "La minör", "Si♭ majör" */
+/** "La minör", "Si♭ majör", "La Hicaz" */
 export function keyLabel(key) {
   const name = pitchLabel(key.step, key.alter);
-  return `${name[0].toLocaleUpperCase('tr-TR')}${name.slice(1)} ${key.mode === 'minor' ? 'minör' : 'majör'}`;
+  return `${name[0].toLocaleUpperCase('tr-TR')}${name.slice(1)} ${MODE_NAMES[key.mode] ?? 'majör'}`;
 }
 
-/** Donanımın kısa tarifi: "donanımsız", "2♯", "3♭" */
-export function signatureLabel(fifths) {
+/** Donanımın kısa tarifi: "donanımsız", "2♯", "3♭"; karışık donanımda "si♭ do♯". */
+export function signatureLabel(signature) {
+  if (Array.isArray(signature)) {
+    return signature.length ? signature.map((m) => pitchLabel(m.step, m.alter)).join(' ') : 'donanımsız';
+  }
+  const fifths = Number(signature) || 0;
   if (!fifths) return 'donanımsız';
   return fifths > 0 ? `${fifths}♯` : `${-fifths}♭`;
 }
 
-/** Bütün tonlar (donanıma göre), seçim listeleri için: { key, fifths, label } */
+// Hicaz için seçilebilecek 12 durak (çift işaret gerektirmeyen yazımlar).
+const HICAZ_TONICS = [[0, 0], [0, 1], [1, 0], [2, -1], [2, 0], [3, 0], [3, 1], [4, 0], [4, 1], [5, 0], [6, -1], [6, 0]];
+
+/** Bütün tonlar (donanıma göre), seçim listeleri için: { key, fifths, signature, label } */
 export function allKeys(mode) {
+  if (BASE_MODE[mode]) {
+    return allKeys(BASE_MODE[mode]).map((item) => {
+      const key = { ...item.key, mode };
+      return { ...item, key, label: `${keyLabel(key)} (${signatureLabel(item.fifths)})` };
+    });
+  }
+  if (mode === 'hicaz') {
+    return HICAZ_TONICS.map(([step, alter]) => {
+      const key = { step, alter, mode };
+      const signature = hicazMarks(key);
+      return { key, fifths: null, signature, label: `${keyLabel(key)} (${signatureLabel(signature)})` };
+    });
+  }
   const out = [];
   for (let f = -7; f <= 7; f += 1) {
     const major = majorTonicOf(f);
@@ -105,7 +195,7 @@ export function allKeys(mode) {
           return { step, alter, mode };
         })()
       : { ...major, mode };
-    out.push({ key, fifths: f, label: `${keyLabel(key)} (${signatureLabel(f)})` });
+    out.push({ key, fifths: f, signature: f, label: `${keyLabel(key)} (${signatureLabel(f)})` });
   }
   return out;
 }
@@ -124,15 +214,30 @@ export function transposeTargets(mode) {
   return [...byPc.entries()].sort((a, b) => a[0] - b[0]).map(([, item]) => item);
 }
 
-/** "la minör", "Sol majör", "mi bemol majör", "F#m" gibi yazılardan ton; tanınmazsa null. */
+/**
+ * "la minör", "Sol majör", "mi bemol majör", "F#m", "La Hicaz", "SOL RAST", "Sİ MİNÖR",
+ * "Lam" (La minör), "Sib" gibi yazılardan ton; tanınmazsa null.
+ */
 export function parseKeyText(text) {
-  const raw = String(text ?? '').trim().toLocaleLowerCase('tr-TR')
+  const raw = foldLetters(text).trim()
     .replace(/♯|diyez/g, '#').replace(/♭|bemol/g, 'b').replace(/\s+/g, ' ');
   if (!raw) return null;
-  let m = /^(do|re|mi|fa|sol|la|si) ?(#|b)? ?(majör|major|minör|minor)$/.exec(raw);
-  if (m) return { step: STEP_NAMES.indexOf(m[1]), alter: m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0, mode: /min/.test(m[3]) ? 'minor' : 'major' };
-  m = /^([a-g])(#|b)?(m)?$/.exec(raw);
-  if (m) return { step: 'cdefgab'.indexOf(m[1]), alter: m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0, mode: m[3] ? 'minor' : 'major' };
+  const modeOf = (word) => {
+    if (!word || /^(maj|major|majör)$/.test(word)) return 'major';
+    if (/^(m|min|minor|minör|-)$/.test(word)) return 'minor';
+    if (/^(hicaz|rast|nihavend|nihavent)$/.test(word)) return word === 'nihavent' ? 'nihavend' : word;
+    return null;
+  };
+  let m = /^(do|re|mi|fa|sol|la|si) ?(#|b)? ?([a-zçğöşü-]*)$/.exec(raw);
+  if (m) {
+    const mode = modeOf(m[3]);
+    if (mode) return { step: STEP_NAMES.indexOf(m[1]), alter: m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0, mode };
+  }
+  m = /^([a-g])(#|b)? ?([a-zçğöşü-]*)$/.exec(raw);
+  if (m) {
+    const mode = modeOf(m[3]);
+    if (mode) return { step: 'cdefgab'.indexOf(m[1]), alter: m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0, mode };
+  }
   return null;
 }
 
@@ -169,10 +274,9 @@ const WRITTEN_ALTER = { '##': 2, x: 2, '#': 1, b: -1, bb: -2, n: 0 };
  * nota: { step, alter, octave, dur, dots }   sus: { rest: true, dur, dots }
  */
 export function parseNotes(code, key, time) {
-  const fifths = fifthsOf(key) ?? 0;
-  const tokens = String(code ?? '')
-    .replace(/♯/g, '#').replace(/♭/g, 'b').replace(/♮/g, 'n').replace(/𝄪/g, 'x')
-    .toLocaleLowerCase('tr-TR')
+  const fifths = signatureOf(key) ?? 0;
+  const tokens = foldLetters(String(code ?? '')
+    .replace(/♯/g, '#').replace(/♭/g, 'b').replace(/♮/g, 'n').replace(/𝄪/g, 'x'))
     .split(/\s+/)
     .filter(Boolean);
   const errors = [];
@@ -306,7 +410,7 @@ export function withAccidentals(measures, fifths) {
 
 /** Notaları koda geri yazar (kâğıttaki gibi: yalnızca gereken işaretler). */
 export function serializeNotes(measures, key) {
-  const fifths = fifthsOf(key) ?? 0;
+  const fifths = signatureOf(key) ?? 0;
   const SIGN = { '-2': 'bb', '-1': 'b', 0: 'n', 1: '#', 2: '##' };
   let lastDur = null;
   return withAccidentals(measures, fifths)
@@ -391,6 +495,7 @@ export function transposeScore(measures, fromKey, toKey, octave = 0) {
     measures: measures.map((measure) => measure.map((item) => transposeNote(item, interval))),
     key: { ...toKey, mode: fromKey.mode },
     fifths: fifthsOf({ ...toKey, mode: fromKey.mode }) ?? 0,
+    signature: signatureOf({ ...toKey, mode: fromKey.mode }) ?? 0,
   };
 }
 
@@ -409,9 +514,9 @@ export const SCORE_HEADER = 'Repertuvarım nota';
 export function parseScoreImport(text) {
   const lines = String(text ?? '').replace(/\r\n?/g, '\n').split('\n');
   const start = lines.findIndex((line) => line.trim() !== '');
-  if (start === -1 || lines[start].trim().toLocaleLowerCase('tr-TR') !== SCORE_HEADER.toLocaleLowerCase('tr-TR')) return null;
+  if (start === -1 || foldLetters(lines[start]).trim() !== foldLetters(SCORE_HEADER)) return null;
   const out = { title: '', composer: '', key: null, time: '4/4', code: '' };
-  const names = { ad: 'title', 'şarkı': 'title', besteci: 'composer', ton: 'key', 'ölçü': 'time', notalar: 'code' };
+  const names = { ad: 'title', 'şarki': 'title', besteci: 'composer', ton: 'key', makam: 'key', 'ölçü': 'time', notalar: 'code' };
   let codeLines = null;
   for (const line of lines.slice(start + 1)) {
     if (codeLines) {
@@ -419,7 +524,7 @@ export function parseScoreImport(text) {
       continue;
     }
     const m = /^\s*([^:]+):\s*(.*)$/.exec(line);
-    const name = m && names[m[1].trim().toLocaleLowerCase('tr-TR')];
+    const name = m && names[foldLetters(m[1]).trim()];
     if (!name) continue;
     if (name === 'code') codeLines = [m[2]];
     else if (name === 'key') out.key = parseKeyText(m[2]);
@@ -438,9 +543,13 @@ export function parseScoreImport(text) {
  */
 export function moveTarget(from, to) {
   if (from.mode === to.mode) return to;
-  const fifths = fifthsOf(to);
-  const same = allKeys(from.mode).find((item) => item.fifths === fifths);
-  return same ? same.key : { ...to, mode: from.mode };
+  // Makama geçerken ya da makamdan çıkarken notalar yerinde kalır (yalnızca adı ve donanımı
+  // değişir; donanıma uymayan sesler işaretle yazılır). Taşımak isterse kullanıcı ayrıca seçer.
+  if (isMakam(from) || isMakam(to)) return from;
+  const signature = signatureOf(to);
+  const same = allKeys(from.mode).find((item) => sameSignature(item.signature, signature));
+  if (same) return same.key;
+  return { ...to, mode: from.mode };
 }
 
 /**
