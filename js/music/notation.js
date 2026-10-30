@@ -9,6 +9,8 @@
  *   - süre: :1 birlik, :2 ikilik, :4 dörtlük, :8 sekizlik, :16 on altılık, :32 otuz ikilik;
  *     sonuna "." noktalı (".." çift noktalı). Yazılmazsa bir önceki notanın süresi.
  *   - "|" ölçü çizgisi. Hiç ölçü çizgisi yoksa ölçüler, ölçü işaretine göre kendiliğinden bölünür.
+ *   - "(3" sonraki 3 notanın üçleme olduğunu söyler (2, 3, 4, 5, 6, 7 olabilir).
+ *   - "[3/4]" ölçü değişimi: bu noktadan sonraki ölçüler 3/4 (ölçünün ilk notası "meter" taşır).
  * Kâğıttaki gibi: donanımdaki işaretler kendiliğinden uygulanır (Sol majörde "fa" = fa diyez)
  * ve bir ölçüde konan işaret o ölçünün sonuna kadar geçerlidir.
  *
@@ -139,7 +141,13 @@ export function parseKeyText(text) {
 /** Süre, dörtlük cinsinden (dörtlük = 1). */
 export function beats(item) {
   const base = 4 / item.dur;
-  return base * (item.dots === 2 ? 1.75 : item.dots === 1 ? 1.5 : 1);
+  return base * (item.dots === 2 ? 1.75 : item.dots === 1 ? 1.5 : 1) * tupletFactor(item.tup);
+}
+
+/** Üçleme gibi gruplar: n nota, şu kadar notanın süresinde çalınır (3 → 2'nin yerine). */
+export const TUPLET_SPACE = { 2: 3, 3: 2, 4: 3, 5: 4, 6: 4, 7: 4 };
+export function tupletFactor(n) {
+  return n && TUPLET_SPACE[n] ? TUPLET_SPACE[n] / n : 1;
 }
 
 export function parseTime(text) {
@@ -171,9 +179,28 @@ export function parseNotes(code, key, time) {
   const raw = []; // { kind: 'note'|'rest'|'bar', ... written }
   let dur = 4;
   let prev = null; // önceki nota (oktav tahmini için)
+  let tuplet = null; // { n, left }
+  const tag = (item) => {
+    if (!tuplet) return item;
+    item.tup = tuplet.n;
+    item.tupPos = tuplet.n - tuplet.left;
+    tuplet.left -= 1;
+    if (tuplet.left <= 0) tuplet = null;
+    return item;
+  };
   tokens.forEach((token, index) => {
     if (/^\|+$/.test(token)) {
       raw.push({ kind: 'bar' });
+      return;
+    }
+    const meterMatch = /^\[(\d{1,2}\/(?:1|2|4|8|16))\]$/.exec(token);
+    if (meterMatch) {
+      raw.push({ kind: 'meter', meter: meterMatch[1] });
+      return;
+    }
+    const tupletMatch = /^\(([2-7])$/.exec(token);
+    if (tupletMatch) {
+      tuplet = { n: Number(tupletMatch[1]), left: Number(tupletMatch[1]) };
       return;
     }
     const m = TOKEN.exec(token);
@@ -185,7 +212,7 @@ export function parseNotes(code, key, time) {
     if (durText) dur = Number(durText);
     const dots = dotText.length;
     if (name === 'sus' || name === 'es') {
-      raw.push({ kind: 'rest', dur, dots });
+      raw.push(tag({ kind: 'rest', dur, dots }));
       return;
     }
     const step = STEP_NAMES.indexOf(name);
@@ -196,7 +223,7 @@ export function parseNotes(code, key, time) {
       const target = diatonic(prev);
       octave = Math.round((target - step) / 7);
     } else octave = 4;
-    const note = { kind: 'note', step, octave, written: accidental === undefined ? null : WRITTEN_ALTER[accidental], dur, dots };
+    const note = tag({ kind: 'note', step, octave, written: accidental === undefined ? null : WRITTEN_ALTER[accidental], dur, dots });
     raw.push(note);
     prev = note;
   });
@@ -206,13 +233,28 @@ export function parseNotes(code, key, time) {
   const hasBars = raw.some((item) => item.kind === 'bar');
   let current = [];
   let filled = 0;
-  const length = measureLength(time);
+  let length = measureLength(time);
+  let pendingMeter = null;
   for (const item of raw) {
     if (item.kind === 'bar') {
       if (current.length) groups.push(current);
       current = [];
       filled = 0;
       continue;
+    }
+    if (item.kind === 'meter') {
+      if (current.length && !hasBars) {
+        groups.push(current);
+        current = [];
+        filled = 0;
+      }
+      pendingMeter = item.meter;
+      length = measureLength(parseTime(item.meter));
+      continue;
+    }
+    if (pendingMeter && !current.length) {
+      item.meter = pendingMeter;
+      pendingMeter = null;
     }
     current.push(item);
     filled += beats(item);
@@ -227,8 +269,9 @@ export function parseNotes(code, key, time) {
   // Kâğıttaki kurallar: donanım + ölçü içinde geçerli işaretler → mutlak yükseklik
   const measures = groups.map((group) => {
     const inMeasure = new Map();
+    const extra = (item) => ({ ...(item.tup ? { tup: item.tup, tupPos: item.tupPos } : {}), ...(item.meter ? { meter: item.meter } : {}) });
     return group.map((item) => {
-      if (item.kind === 'rest') return { rest: true, dur: item.dur, dots: item.dots };
+      if (item.kind === 'rest') return { rest: true, dur: item.dur, dots: item.dots, ...extra(item) };
       const slot = item.octave * 7 + item.step;
       let alter;
       if (item.written !== null) {
@@ -237,7 +280,7 @@ export function parseNotes(code, key, time) {
       } else {
         alter = inMeasure.has(slot) ? inMeasure.get(slot) : signatureAlter(fifths, item.step);
       }
-      return { step: item.step, alter, octave: item.octave, dur: item.dur, dots: item.dots };
+      return { step: item.step, alter, octave: item.octave, dur: item.dur, dots: item.dots, ...extra(item) };
     });
   });
   return { measures, errors };
@@ -272,8 +315,9 @@ export function serializeNotes(measures, key) {
         .map((item) => {
           const dur = item.dur !== lastDur || item.dots ? `:${item.dur}${'.'.repeat(item.dots)}` : '';
           lastDur = item.dur;
-          if (item.rest) return `sus${dur}`;
-          return `${STEP_NAMES[item.step]}${item.shown === null ? '' : SIGN[item.shown]}${item.octave}${dur}`;
+          const prefix = (item.meter ? `[${item.meter}] ` : '') + (item.tup && item.tupPos === 0 ? `(${item.tup} ` : '');
+          if (item.rest) return `${prefix}sus${dur}`;
+          return `${prefix}${STEP_NAMES[item.step]}${item.shown === null ? '' : SIGN[item.shown]}${item.octave}${dur}`;
         })
         .join(' ')
     )
@@ -283,9 +327,10 @@ export function serializeNotes(measures, key) {
 
 /** Ölçü süresi uymayan ölçüler (anacrouse için ilk ölçü hariç): [{ index, have, need }] */
 export function measureProblems(measures, time) {
-  const need = measureLength(time);
+  let need = measureLength(time);
   const problems = [];
   measures.forEach((measure, index) => {
+    if (measure[0]?.meter) need = measureLength(parseTime(measure[0].meter));
     const have = measure.reduce((sum, item) => sum + beats(item), 0);
     const isPickup = index === 0 && have < need;
     const isLast = index === measures.length - 1 && have < need;

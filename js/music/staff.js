@@ -1,5 +1,5 @@
 /**
- * Porte çizimi (SVG): sol anahtarı, donanım, ölçü işareti, süreleriyle notalar (yuvarlak,
+ * Porte çizimi (SVG): sol ya da fa anahtarı, donanım, ölçü işareti, süreleriyle notalar (yuvarlak,
  * sap, bayrak, ışın, nokta), suslar, değişim işaretleri, ek çizgiler, ölçü çizgileri ve
  * istenirse notaların altında adları (do, re, mi…).
  *
@@ -8,6 +8,11 @@
  * telefonda aynı görünür.
  */
 import { beats, diatonic, pitchLabel, signatureSteps, withAccidentals } from './notation.js';
+
+// Fa anahtarında notalar, sol anahtarındaki yerlerine göre 12 basamak (bir oktav + üçlü) yukarıda
+// çizilir; böylece çizim kodu tek bir porte düzenini kullanır.
+let clefShift = 0;
+const posOf = (item) => diatonic(item) + clefShift;
 
 const SVG = 'http://www.w3.org/2000/svg';
 const TOP_LINE = 38; // fa5: portenin en üst çizgisi (sol anahtarı)
@@ -38,7 +43,7 @@ function beatGroups(time) {
 
 /** Bir ölçünün öğelerini yatayda yerleştirir; genişliği ve x konumlarını döndürür. */
 function measureLayout(measure, s) {
-  let x = s * 1.1;
+  let x = s * 1.1 + (measure[0]?.meter ? s * 2.4 : 0);
   const items = measure.map((item) => {
     const left = item.shown !== null && item.shown !== undefined ? s * 1.3 : 0;
     const width = WIDTH[item.dur] * s + left + (item.dots ? s * 0.7 : 0);
@@ -69,6 +74,18 @@ function trebleClef(g, x, yOf, s) {
   ].join(' ');
   node('path', { d, fill: 'none', stroke: 'currentColor', 'stroke-width': s * 0.22, 'stroke-linecap': 'round', class: 'staff-clef' }, g);
   node('circle', { cx: cx - s * 0.45, cy: bottom - s * 0.45, r: s * 0.32, fill: 'currentColor' }, g);
+}
+
+function bassClef(g, x, yOf, s) {
+  const cx = x + s * 0.7;
+  const fy = yOf(36); // fa çizgisi (fa anahtarında 4. çizgi)
+  node('circle', { cx, cy: fy, r: s * 0.42, fill: 'currentColor' }, g);
+  node('path', {
+    fill: 'none', stroke: 'currentColor', 'stroke-width': s * 0.3, 'stroke-linecap': 'round',
+    d: `M ${cx - s * 0.3} ${fy - s * 0.2} C ${cx - s * 0.2} ${fy - s * 1.4} ${cx + s * 2.1} ${fy - s * 1.6} ${cx + s * 2.1} ${fy + s * 0.2} C ${cx + s * 2.1} ${fy + s * 1.8} ${cx + s * 0.6} ${fy + s * 3.2} ${cx - s * 0.6} ${fy + s * 3.6}`,
+  }, g);
+  node('circle', { cx: cx + s * 2.8, cy: yOf(37), r: s * 0.2, fill: 'currentColor' }, g);
+  node('circle', { cx: cx + s * 2.8, cy: yOf(35), r: s * 0.2, fill: 'currentColor' }, g);
 }
 
 function accidental(g, kind, x, y, s) {
@@ -141,14 +158,14 @@ function flags(g, count, x, yEnd, up, s) {
 
 // --- Bir satırın çizimi --------------------------------------------------------------------
 
-function drawLine(container, line, { fifths, time, showNames, s, width, first, last }) {
+function drawLine(container, line, { fifths, time, showNames, s, width, first, last, clef }) {
   // Dikey yer: satırdaki en yüksek/alçak notaya göre
   let maxPos = TOP_LINE + 3;
   let minPos = BOTTOM_LINE - 3;
   for (const measure of line.measures) {
     for (const placed of measure.items) {
       if (placed.item.rest) continue;
-      const pos = diatonic(placed.item);
+      const pos = posOf(placed.item);
       maxPos = Math.max(maxPos, pos + 7);
       minPos = Math.min(minPos, pos - 7);
     }
@@ -169,11 +186,13 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
   }
   node('line', { x1: 0.5, x2: 0.5, y1: yOf(TOP_LINE), y2: yOf(BOTTOM_LINE), stroke: 'currentColor', 'stroke-width': s * 0.12 }, g);
 
-  trebleClef(g, s * 0.4, yOf, s);
+  if (clef === 'bass') bassClef(g, s * 0.4, yOf, s);
+  else trebleClef(g, s * 0.4, yOf, s);
   let x = s * 3.2;
   const sigSteps = signatureSteps(fifths);
   for (const step of sigSteps) {
-    accidental(g, fifths > 0 ? 1 : -1, x, yOf(fifths > 0 ? SHARP_POS[step] : FLAT_POS[step]), s);
+    const sigPos = (fifths > 0 ? SHARP_POS[step] : FLAT_POS[step]) - (clef === 'bass' ? 2 : 0);
+    accidental(g, fifths > 0 ? 1 : -1, x, yOf(sigPos), s);
     x += s * 1.05;
   }
   x += s * 0.4;
@@ -190,6 +209,14 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
 
   for (const measure of line.measures) {
     const measureX = x;
+    // Ölçü değişimi: ölçünün başına yeni ölçü işareti
+    const meterHere = measure.items[0]?.item.meter;
+    if (meterHere) {
+      const [num, den] = meterHere.split('/');
+      for (const [text, pos] of [[num, 36], [den, 32]]) {
+        node('text', { x: measureX + s * 1.6, y: yOf(pos) + s * 0.72, 'text-anchor': 'middle', 'font-size': s * 2.1, 'font-weight': 800, 'font-family': 'Georgia, "Times New Roman", serif', fill: 'currentColor', class: 'staff-time' }, g).textContent = text;
+      }
+    }
     // Bu ölçüdeki notaların gerçek x konumları
     let extra = 0;
     const placedItems = measure.items.map((placed) => {
@@ -230,7 +257,7 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
         if (item.dots) node('circle', { cx: cx + s * 0.9, cy: yOf(35), r: s * 0.16, fill: 'currentColor' }, g);
         continue;
       }
-      const pos = diatonic(item);
+      const pos = posOf(item);
       const y = yOf(pos);
       ledgerLines(g, pos, cx, yOf, s);
       if (item.shown !== null && item.shown !== undefined) accidental(g, item.shown, cx - s * 1.45, y, s);
@@ -252,7 +279,7 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
 
     // Işınlar
     for (const group of beamGroups) {
-      const positions = group.map((p) => diatonic(p.item));
+      const positions = group.map((p) => posOf(p.item));
       const up = positions.reduce((a, b) => a + b, 0) / positions.length < MIDDLE;
       const stemXs = group.map((p) => (up ? p.cx + s * 0.56 : p.cx - s * 0.56));
       const ys = positions.map((p) => yOf(p));
@@ -294,6 +321,24 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
       }
     }
 
+    // Üçleme gibi grupların sayısı (grubun üstünde)
+    let tupletGroup = [];
+    const drawTuplet = () => {
+      if (!tupletGroup.length) return;
+      const xs = tupletGroup.map((p) => p.cx);
+      const tops = tupletGroup.map((p) => (p.item.rest ? yOf(TOP_LINE) : yOf(posOf(p.item)) - s * 3.6));
+      const y = Math.min(yOf(TOP_LINE), ...tops) - s * 0.7;
+      const textNode = node('text', { x: (Math.min(...xs) + Math.max(...xs)) / 2 + s * 0.3, y, 'text-anchor': 'middle', 'font-size': s * 1.3, 'font-style': 'italic', 'font-weight': 700, fill: 'currentColor', class: 'staff-tuplet' }, g);
+      textNode.textContent = String(tupletGroup[0].item.tup);
+      tupletGroup = [];
+    };
+    for (const placed of placedItems) {
+      if (placed.item.tup && placed.item.tupPos === 0) drawTuplet();
+      if (placed.item.tup) tupletGroup.push(placed);
+      else drawTuplet();
+    }
+    drawTuplet();
+
     x = measureX + measureWidth;
     const isFinal = last && measure === line.measures[line.measures.length - 1];
     if (isFinal) {
@@ -310,7 +355,8 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
  * Besteyi container içine çizer.
  * options: { measures, fifths, time: {num, den}, showNames, scale }
  */
-export function renderStaff(container, { measures, fifths, time, showNames = true, scale = 1 }) {
+export function renderStaff(container, { measures, fifths, time, showNames = true, scale = 1, clef = 'treble' }) {
+  clefShift = clef === 'bass' ? 12 : 0;
   const s = 9.5 * scale; // porte aralığı (piksel)
   const width = Math.max(240, Math.floor(container.clientWidth || 320));
   const marked = withAccidentals(measures, fifths);
@@ -339,7 +385,7 @@ export function renderStaff(container, { measures, fifths, time, showNames = tru
     lines.push({ measures: [], width: 0, count: 0 });
   }
   lines.forEach((current, index) =>
-    drawLine(container, current, { fifths, time, showNames, s, width, first: index === 0, last: index === lines.length - 1 })
+    drawLine(container, current, { fifths, time, showNames, s, width, first: index === 0, last: index === lines.length - 1, clef })
   );
 }
 
