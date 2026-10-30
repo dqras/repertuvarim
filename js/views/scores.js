@@ -15,7 +15,7 @@ import { compareText } from '../lib/text.js';
 import { describeStorageError } from '../data/db.js';
 import {
   DURATIONS, DURATION_NAMES, STEP_NAMES, SCORE_HEADER, TIME_SIGNATURES, allKeys, diatonic, fifthsOf,
-  keyLabel, measureProblems, parseNotes, parseScoreImport, parseTime, serializeNotes, signatureLabel, transposeScore,
+  keyLabel, measureProblems, parseNotes, parseScoreImport, parseTime, pitchLabel, serializeNotes, signatureLabel, transposeScore,
   transposeTargets,
 } from '../music/notation.js';
 import { watchStaff } from '../music/staff.js';
@@ -294,6 +294,36 @@ export function createScoreEditor(root, actions) {
     }
   }
 
+  // --- Ton değişimi: notalar da taşınır ------------------------------------------------
+
+  function onKeyChange() {
+    const { ui } = state;
+    const from = state.lastKey;
+    const to = readKey();
+    state.lastKey = to;
+    const before = ui.code.value;
+    const { measures } = parseNotes(before, from, parseTime(ui.time.value));
+    if (!measures.length || sameKey(from, to)) {
+      refresh();
+      return;
+    }
+    const moved = transposeScore(measures, from, { ...to, mode: from.mode });
+    ui.code.value = serializeNotes(moved.measures, to);
+    refresh();
+    const first = moved.measures.flat().find((item) => !item.rest);
+    showReadNotice([
+      el('p', { class: 'notice__text', id: 'sc-key-moved' },
+        `Notalar ${keyLabel(to)} tonuna taşındı${first ? ` (ilk nota artık ${pitchLabel(first.step, first.alter)})` : ''}. `,
+        'Yalnızca donanımı düzeltmek istediyseniz (okuyucu tonu yanlış okuduysa) notaları yerinde bırakın.'),
+      el('div', { class: 'notice__actions' },
+        el('button', { type: 'button', class: 'button button--quiet button--small', id: 'sc-key-keep', onclick: () => {
+          ui.code.value = before;
+          refresh();
+          state.ui.readNotice.hidden = true;
+        } }, 'Notaları yerinde bırak')),
+    ]);
+  }
+
   // --- Fotoğraftan okuma ----------------------------------------------------------------
 
   let readUndo = null;
@@ -361,6 +391,7 @@ export function createScoreEditor(root, actions) {
     root.querySelector('.score-code')?.removeAttribute('open');
     refresh();
     readUndo = { before, photoBefore: before.photo };
+    state.lastKey = readKey();
 
     const problems = measureProblems(result.measures, parseTime(result.time));
     const notes = [];
@@ -392,6 +423,7 @@ export function createScoreEditor(root, actions) {
     drawPhoto();
     refresh();
     state.ui.readNotice.hidden = true;
+    state.lastKey = readKey();
   }
 
   function snapshot(data) {
@@ -471,7 +503,10 @@ export function createScoreEditor(root, actions) {
             el('button', { type: 'button', class: 'button button--danger-quiet', id: 'sc-delete', onclick: remove }, icon('trash'), 'Notayı sil')) : null))
     );
 
-    for (const control of [ui.code, ui.key, ui.time, ui.clef]) control.addEventListener(control === ui.code ? 'input' : 'change', refresh);
+    for (const control of [ui.code, ui.time, ui.clef]) control.addEventListener(control === ui.code ? 'input' : 'change', refresh);
+    // Ton değişince notalar da yeni tona taşınır (la minörde la ile başlayan beste, si minörde si ile başlar).
+    state.lastKey = readKey();
+    ui.key.addEventListener('change', onKeyChange);
     ui.title.addEventListener('input', () => { ui.titleError.hidden = true; ui.title.removeAttribute('aria-invalid'); });
     drawPhoto();
     state.staff?.stop();
@@ -647,6 +682,7 @@ export function createScoreEditor(root, actions) {
     if (TIME_SIGNATURES.includes(data.time)) ui.time.value = data.time;
     ui.code.value = data.code;
     root.querySelector('.score-code')?.setAttribute('open', '');
+    state.lastKey = readKey();
     refresh();
     showMessage(`“${data.title || 'Nota'}” aktarıldı. Porteyi fotoğrafla karşılaştırıp Kaydet’e basın.`);
     return true;
