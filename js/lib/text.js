@@ -13,6 +13,24 @@ export function compareText(a, b) {
   return collator.compare(a ?? '', b ?? '');
 }
 
+/**
+ * Metni Türkçe harfleri bozulmadan saklanacak hâle getirir:
+ *  - harfler birleşik biçime çevrilir (NFC): "I" + üst nokta → "İ";
+ *  - başka dillere göre küçültülmüş "İ" harfinden kalan fazladan nokta silinir
+ *    ("i̇stanbul" → "istanbul"). Böylece akor hizası ve arama doğru çalışır.
+ */
+export function cleanText(text) {
+  return String(text ?? '').normalize('NFC').replace(/([iıjI])\u0307/g, (_, letter) => (letter === 'I' ? 'İ' : letter === 'ı' ? 'i' : letter));
+}
+
+/**
+ * Yazılan bir adı karşılaştırmak için sadeleştirir: Türkçe küçük harfe çevrilir ve
+ * noktalı/noktasız i farkı kaldırılır. "SI", "Sİ", "sı", "si" → "si"; "MİNÖR", "MINÖR" → "minör".
+ */
+export function foldLetters(text) {
+  return cleanText(text).toLocaleLowerCase('tr-TR').replace(/ı/g, 'i').replace(/\u0307/g, '');
+}
+
 const TURKISH_LETTERS = { ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u', â: 'a', î: 'i', û: 'u' };
 
 /**
