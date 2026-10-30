@@ -333,3 +333,25 @@ export async function deleteScore(id) {
   });
   notifyChange();
 }
+
+// --- Yedekleme ------------------------------------------------------------------
+
+/** Yedeğe girecek bütün kayıtlar (şarkılar, kategoriler, setlistler, notalar). */
+export async function exportRecords() {
+  const [songs, categories, setlists, scores] = await Promise.all([listSongs(), listCategories(), listSetlists(), listScores()]);
+  return { songs, categories, setlists, scores };
+}
+
+/**
+ * Geri yükleme: verilen kayıtları tek seferde yazar (ya hepsi yazılır ya hiçbiri).
+ * Yalnızca ekler ya da günceller; hiçbir kaydı silmez.
+ */
+export async function importRecords({ songs = [], categories = [], setlists = [], scores = [] }) {
+  await transact(await init(), ['songs', 'categories', 'setlists', 'scores'], 'readwrite', async (stores) => {
+    for (const category of categories) stores.categories.put(normalizeCategory(category, category.order ?? 0));
+    for (const song of songs) stores.songs.put(normalizeSong(song));
+    for (const setlist of setlists) stores.setlists.put(normalizeSetlist(setlist));
+    for (const score of scores) stores.scores.put(normalizeScore(score));
+  });
+  notifyChange();
+}

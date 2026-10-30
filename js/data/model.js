@@ -5,7 +5,11 @@
  * Bu dosya ekranlardan bağımsızdır; tests/model.test.mjs ile test edilir.
  */
 
-const toText = (value) => (value === null || value === undefined ? '' : String(value));
+import { cleanText, foldLetters } from '../lib/text.js';
+import { parseKeyText } from '../music/notation.js';
+
+// Her metin alanı Türkçe harfleri bozulmadan saklanacak biçime getirilir (İ, ı, ş, ğ …).
+const toText = (value) => (value === null || value === undefined ? '' : cleanText(value));
 const isNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 
 /**
@@ -70,14 +74,17 @@ export function songToForm(song) {
 
 /**
  * Ton yazımını düzenler: "am" → "Am", "f♯m" → "F#m", "Bb" → "Bb".
+ * Türkçe adlar da olur: "La minör", "LAM", "Sİ", "sı bemol majör", "Fa diyez minör" → "Am", "Am", "B", "Bb", "F#m".
  * Boşsa '' döner; tanınmıyorsa null döner.
  */
 export function normalizeKeyName(text) {
-  const raw = toText(text).trim().replace(/♯/g, '#').replace(/♭/g, 'b').replace(/\s+/g, '');
+  const raw = toText(text).trim().replace(/♯/g, '#').replace(/♭/g, 'b').replace(/\s+/g, ' ');
   if (!raw) return '';
-  const match = /^([A-Ga-g])([#b]?)(m|min|-)?$/.exec(raw);
-  if (!match) return null;
-  return match[1].toUpperCase() + match[2] + (match[3] ? 'm' : '');
+  const match = /^([A-Ga-g])([#b]?)(m|min|-)?$/.exec(raw.replace(/ /g, ''));
+  if (match) return match[1].toUpperCase() + match[2] + (match[3] ? 'm' : '');
+  const key = parseKeyText(raw);
+  if (!key || (key.mode !== 'major' && key.mode !== 'minor')) return null;
+  return 'CDEFGAB'[key.step] + (key.alter === 1 ? '#' : key.alter === -1 ? 'b' : '') + (key.mode === 'minor' ? 'm' : '');
 }
 
 /**
@@ -123,7 +130,7 @@ export function validateSongForm(form) {
   }
 
   const key = normalizeKeyName(form.key);
-  if (key === null) errors.key = 'Ton tanınmadı. Am, C ya da F#m gibi yazın veya boş bırakın.';
+  if (key === null) errors.key = 'Ton tanınmadı. Am, C, F#m ya da La minör gibi yazın veya boş bırakın.';
 
   let bpm = null;
   const bpmText = toText(form.bpm).trim();
@@ -188,8 +195,8 @@ export function validateName(raw, others = [], { label = 'Ad' } = {}) {
   const name = toText(raw).replace(/\s+/g, ' ').trim();
   if (!name) return { ok: false, name, error: `${label} boş olamaz.` };
   if (name.length > MAX_NAME_LENGTH) return { ok: false, name, error: `${label} en fazla ${MAX_NAME_LENGTH} harf olabilir.` };
-  const folded = name.toLocaleLowerCase('tr-TR');
-  if (others.some((other) => toText(other.name).trim().toLocaleLowerCase('tr-TR') === folded)) {
+  const folded = foldLetters(name);
+  if (others.some((other) => foldLetters(toText(other.name).replace(/\s+/g, ' ').trim()) === folded)) {
     return { ok: false, name, error: `“${name}” adında bir kayıt zaten var.` };
   }
   return { ok: true, name, error: '' };
@@ -210,11 +217,12 @@ export function normalizeSetlist(raw = {}) {
 
 /**
  * Nota (beste): ton ve donanım, ölçü, nota kodu ve isteğe bağlı fotoğraf (cihazda saklanır).
- * key: { step 0..6, alter -1..1, mode 'major' | 'minor' }
+ * key: { step 0..6, alter -1..1, mode 'major' | 'minor' | 'hicaz' | 'rast' | 'nihavend' }
  */
+const SCORE_MODES = ['major', 'minor', 'hicaz', 'rast', 'nihavend'];
 export function normalizeScore(raw = {}) {
   const key = raw.key && Number.isInteger(raw.key.step)
-    ? { step: raw.key.step, alter: Number(raw.key.alter) || 0, mode: raw.key.mode === 'minor' ? 'minor' : 'major' }
+    ? { step: raw.key.step, alter: Number(raw.key.alter) || 0, mode: SCORE_MODES.includes(raw.key.mode) ? raw.key.mode : 'major' }
     : { step: 5, alter: 0, mode: 'minor' };
   const now = Date.now();
   return {
