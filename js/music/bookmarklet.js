@@ -5,13 +5,18 @@
  * yüzden uygulama repertuarim.com ya da akorlar.com sayfasını bağlantıdan açıp
  * okuyamaz. Yer imi ise o sitenin sayfasının içinde çalışır:
  *  1. Şarkının akor kutusunu (pre#key.chords), başlığını ve orijinal tonunu bulur,
- *  2. bunları "Repertuvarım aktarım" biçiminde panoya kopyalar
+ *  2. her akorun sayfada GÖRÜNDÜĞÜ yeri ölçer ve akor satırındaki boşlukları, akor
+ *     altındaki sözdeki harfin sırasına göre yeniden dizer. (Siteler eşit genişlikte
+ *     olmayan bir yazı tipi kullanır; harf saymak akoru kaydırır, ekrandaki yeri ölçmek
+ *     ise sitedeki görünümün aynısını verir.)
+ *  3. bunları "Repertuvarım aktarım" biçiminde panoya kopyalar
  *     (kopyalanamazsa ekranda bir "Kopyala" düğmesi gösterir),
- *  3. kullanıcı uygulamada "Panodan aktar"a dokunur (bkz. song-text.js parseImport).
+ *  4. kullanıcı uygulamada "Panodan aktar"a dokunur (bkz. song-text.js parseImport).
  * Hiçbir veri bir sunucuya gönderilmez.
  *
- * Kurallar: kod tek satırdır (yer imi adresine yapıştırılabilsin diye), // yorumu
- * ve yüzde işareti içermez. Testi: tests/bookmarklet (tarayıcıda) ve aşama 8 testleri.
+ * Yer iminin kendisi kısa bir yükleyicidir; asıl kod (IMPORT_SCRIPT) uygulamanın
+ * adresinden aktar.js olarak yüklenir. Kurallar: kod tek satırdır, // ve yüzde işareti
+ * içermez (Safari yer imi adresindeki yüzde işaretlerini bozar). Testi: tests/bookmarklet (tarayıcıda) ve aşama 8 testleri.
  */
 
 const SOURCE = [
@@ -23,7 +28,16 @@ const SOURCE = [
   "const t=((h&&h.innerText)||document.title).replace(/\\s+/g,' ').replace(/\\s*-?\\s*Akor\\b.*$/i,'').trim();",
   "let a='',s=t;const i=t.indexOf(' - ');if(i>0){a=t.slice(0,i).trim();s=t.slice(i+3).trim()}",
   "const m=document.body.innerText.match(/Ori?jinal Ton\\s*:\\s*([A-G][#b]?m?)/i);",
-  "const x=['Repertuvarım aktarım','Şarkı: '+s,'Sanatçı: '+a,'Ton: '+(m?m[1]:''),'Kaynak: '+location.href,'',p.innerText.replace(/\\u00a0/g,' ')].join('\\n');",
+  "const L=[[]],W=document.createTreeWalker(p,4),R=document.createRange();let n;",
+  "while(n=W.nextNode()){const inC=!!(n.parentElement&&n.parentElement.closest('.c'));for(let k=0;k<n.length;k++){const ch=n.data[k];if(ch==='\\r')continue;if(ch==='\\n'){L.push([]);continue}R.setStart(n,k);R.setEnd(n,k+1);const q=R.getBoundingClientRect();L[L.length-1].push({ch:/\\s/.test(ch)?' ':ch,inC,l:q.left,r:q.right})}}",
+  "const toks=(row)=>{const out=[];let st=-1;row.forEach((c,k)=>{if(c.ch!==' '&&st<0)st=k;if(c.ch===' '&&st>=0){out.push([st,k]);st=-1}});if(st>=0)out.push([st,row.length]);return out.map(([b,e])=>({b,e,t:row.slice(b,e).map((c)=>c.ch).join('')}))};",
+  "const RX=/^[A-G][#b]?(m|maj|min|dim|aug|sus|add|M)?[0-9]{0,2}(sus[24]?|add[0-9]{1,2}|[#b][0-9]{1,2}|maj[0-9]{0,2}|m[0-9]?)*(\\/[A-G][#b]?)?$|^\\(?x[0-9]+\\)?$|^[|\\-]+$/;",
+  "const isC=(row)=>{const T=toks(row);return T.length>0&&T.every((t)=>row.slice(t.b,t.e).every((c)=>c.inC)||RX.test(t.t))};",
+  "const text=L.map((row,i)=>{const N=L[i+1];const plain=row.map((c)=>c.ch).join('');if(!isC(row)||!N||!N.length||isC(N))return plain;",
+  "const sp=row.find((c)=>c.ch===' ');const w=(sp&&sp.r-sp.l)||4;let o='';",
+  "for(const t of toks(row)){const x=row[t.b].l;let col=N.findIndex((c)=>x<c.r-0.5);if(col<0)col=N.length+Math.max(0,Math.round((x-N[N.length-1].r)/w));if(o.length)col=Math.max(col,o.length+1);o+=' '.repeat(Math.max(0,col-o.length))+t.t}",
+  "return o});",
+  "const x=['Repertuvarım aktarım','Şarkı: '+s,'Sanatçı: '+a,'Ton: '+(m?m[1]:''),'Kaynak: '+location.href,''].concat(text).join('\\n');",
   "const d=document.createElement('div');d.id='rp-aktar';",
   "d.style.cssText='position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483647;max-width:480px;margin:0 auto;background:#231d2e;color:#f3eee6;border:1px solid #ffd43b;border-radius:16px;padding:16px;font:16px/1.45 system-ui,sans-serif;box-shadow:0 12px 32px rgba(0,0,0,.5);text-align:left';",
   "const b=document.createElement('b');b.textContent='Repertuvarım’a aktar';b.style.cssText='display:block;margin-bottom:6px;color:#ffd43b';",
@@ -40,5 +54,21 @@ const SOURCE = [
   "})()",
 ].join('');
 
-/** Yer imine yapıştırılacak adres. */
-export const BOOKMARKLET = `javascript:${SOURCE}`;
+/** Aktarma kodunun tamamı. Uygulamayla birlikte aktar.js olarak yayımlanır (bkz. tools/build-aktar.mjs). */
+export const IMPORT_SCRIPT = SOURCE;
+
+/** Uygulamanın adresindeki aktar.js. (Eğik çizgiler \\/ ile yazılır: kodda // geçmesin.) */
+const SCRIPT_URL = 'https:\\/\\/dqras.github.io\\/repertuvarim\\/aktar.js';
+
+/**
+ * Yer imine yapıştırılacak adres: kısa bir yükleyici. Her dokunuşta aktar.js'in en yeni
+ * sürümünü getirir; böylece aktarma iyileştikçe yer imini değiştirmek gerekmez.
+ */
+export const BOOKMARKLET = 'javascript:' + [
+  "(()=>{",
+  "const s=document.createElement('script');",
+  `s.src='${SCRIPT_URL}?v='+Date.now();`,
+  "s.onerror=()=>alert('Repertuvarım’a ulaşılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.');",
+  "document.body.appendChild(s)",
+  "})()",
+].join('');
