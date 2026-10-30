@@ -1,16 +1,19 @@
 /**
- * Fotoğraftan nota okuma (OMR).
+ * Fotoğraftan nota okuma (OMR). İki okuyucu var:
  *
- * Okumayı LEGATO yapar: basılı notaları okuyan açık bir yapay zekâ modeli (ICLR 2026).
- * Hugging Face'teki ücretsiz örnek sunucusuna (guangyangmusic/legato-demo) fotoğraf
- * gönderilir, sonuç ABC nota yazısı olarak gelir ve abc.js ile uygulamanın notalarına
- * çevrilir. İnternet gerekir; fotoğraf okunmak için bu sunucuya gönderilir.
+ * 1) Telefondaki okuyucu (varsayılan): omr-local.js. İnternet gerekmez, fotoğraf cihazdan
+ *    çıkmaz. Basılı, net notalarda iyi sonuç verir. Okuma ayrı bir iş parçacığında yapılır
+ *    (omr-worker.js), ekran donmaz.
  *
- * Sunucu bir süre kullanılmazsa uykuya geçer; ilk istekte uyanması bir-iki dakika sürebilir.
- * Okuyucunun ücretsiz günlük kullanım hakkı vardır (anahtarsız birkaç okuma); hak dolunca
- * sebebi 'quota' hatasıyla bildirilir. İsteğe bağlı ücretsiz anahtar hakkı artırır.
+ * 2) Gelişmiş okuyucu: LEGATO, basılı notaları okuyan açık bir yapay zekâ modeli (ICLR 2026).
+ *    Hugging Face'teki ücretsiz örnek sunucusuna (guangyangmusic/legato-demo) fotoğraf
+ *    gönderilir, sonuç ABC nota yazısı olarak gelir ve abc.js ile notalara çevrilir.
+ *    İnternet gerekir; günlük ücretsiz kullanım hakkı vardır (anahtarsız birkaç okuma); hak
+ *    dolunca sebebi 'quota' hatasıyla bildirilir. İsteğe bağlı ücretsiz anahtar hakkı artırır.
+ *    Sunucu bir süre kullanılmazsa uykuya geçer; ilk istekte uyanması bir-iki dakika sürebilir.
  */
 import { parseAbc } from './abc.js';
+import { readScoreBitmap } from './omr-local.js';
 
 export const OMR_SERVER = 'https://guangyangmusic-legato-demo.hf.space';
 const MAX_SIDE = 2200; // gönderilmeden önce fotoğraf en fazla bu boyuta küçültülür
@@ -20,7 +23,7 @@ export class OmrError extends Error {
   constructor(reason, message, extra = {}) {
     super(message ?? reason);
     // 'offline' | 'server' | 'busy' | 'quota' | 'token' | 'image' | 'empty' | 'timeout'
-    this.reason = reason;
+    this.reason = reason; // ayrıca 'pdf': telefondaki okuyucu PDF açamaz
     Object.assign(this, extra); // quota: { retrySeconds, withToken }
   }
 }
@@ -224,16 +227,108 @@ export async function readScorePhoto(file, { onProgress } = {}) {
   return { ...result, abc };
 }
 
+// --- Telefondaki okuyucu ---------------------------------------------------------------
+
+const LOCAL_MAX_SIDE = 3200; // çok büyük fotoğraflar önce küçültülür (hız ve bellek)
+
+/** Fotoğrafı gri tonlu piksellere çevirir: { width, height, data } */
+async function toGray(file) {
+  if (file.type === 'application/pdf') throw new OmrError('pdf');
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new OmrError('image');
+  }
+  const scale = Math.min(1, LOCAL_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, width, height);
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close?.();
+  const rgba = context.getImageData(0, 0, width, height).data;
+  const data = new Uint8Array(width * height);
+  for (let i = 0, j = 0; i < data.length; i += 1, j += 4) {
+    data[i] = (rgba[j] * 299 + rgba[j + 1] * 587 + rgba[j + 2] * 114) / 1000;
+  }
+  return { width, height, data };
+}
+
+/** Okumayı arka plan işçisinde yapar; işçi açılamazsa (eski tarayıcı) doğrudan yapar. */
+function runLocal(image) {
+  return new Promise((resolve, reject) => {
+    let worker;
+    try {
+      worker = new Worker(new URL('./omr-worker.js', import.meta.url), { type: 'module' });
+    } catch {
+      worker = null;
+    }
+    if (!worker) {
+      try {
+        resolve(readScoreBitmap(image));
+      } catch (error) {
+        reject(error);
+      }
+      return;
+    }
+    let settled = false;
+    const fallback = () => {
+      if (settled) return;
+      settled = true;
+      worker.terminate();
+      try {
+        resolve(readScoreBitmap(image));
+      } catch (error) {
+        reject(error);
+      }
+    };
+    worker.onmessage = (event) => {
+      if (settled) return;
+      settled = true;
+      worker.terminate();
+      if (event.data.ok) resolve(event.data.result);
+      else reject(new Error(event.data.message));
+    };
+    worker.onerror = (event) => {
+      event.preventDefault?.();
+      fallback(); // modül işçisi desteklenmiyorsa
+    };
+    worker.postMessage(image);
+  });
+}
+
+/** Bir fotoğrafı telefonda okur. Sonuç: abc.js parseAbc biçimi. */
+export async function readScorePhotoLocal(file, { onProgress } = {}) {
+  onProgress?.({ step: 'local' });
+  const image = await toGray(file);
+  let result;
+  try {
+    result = await runLocal(image);
+  } catch (error) {
+    console.error('Nota okunamadı:', error);
+    throw new OmrError('empty');
+  }
+  if (!result.measures.length) throw new OmrError('empty');
+  return result;
+}
+
 /**
  * Birden fazla fotoğrafı sırayla okuyup tek beste yapar (sayfa sayfa).
  * Ton, ölçü, anahtar ve ad ilk fotoğraftan alınır. Okunamayan sayfa varsa failed'de döner.
+ * engine: 'local' (telefondaki okuyucu, varsayılan) ya da 'advanced' (LEGATO, internet gerekir)
  */
-export async function readScorePhotos(files, { onProgress } = {}) {
+export async function readScorePhotos(files, { onProgress, engine = 'local' } = {}) {
+  const readOne = engine === 'advanced' ? readScorePhoto : readScorePhotoLocal;
   let combined = null;
   const failed = [];
   for (const [index, file] of files.entries()) {
     try {
-      const page = await readScorePhoto(file, { onProgress: (p) => onProgress?.({ ...p, page: index + 1, pages: files.length }) });
+      const page = await readOne(file, { onProgress: (p) => onProgress?.({ ...p, page: index + 1, pages: files.length }) });
       if (!combined) combined = { ...page, warnings: [...page.warnings] };
       else {
         combined.measures = combined.measures.concat(page.measures);
