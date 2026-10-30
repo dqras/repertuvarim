@@ -11,7 +11,7 @@
  * yalnızca uygulamanın kendi dosyalarını tutar; yenilense bile şarkılar etkilenmez.
  */
 
-const VERSION = '0.11.3';
+const VERSION = '0.12.0';
 const CACHE_PREFIX = 'repertuvarim-';
 const CACHE_NAME = `${CACHE_PREFIX}${VERSION}`;
 
@@ -37,11 +37,13 @@ const APP_FILES = [
   './js/music/render.js',
   './js/music/song-text.js',
   './js/music/staff.js',
+  './js/data/backup.js',
   './js/data/db.js',
   './js/data/defaults.js',
   './js/data/model.js',
   './js/data/repository.js',
   './js/data/sample-songs.js',
+  './js/views/backup.js',
   './js/views/categories.js',
   './js/views/components.js',
   './js/views/dialog.js',
