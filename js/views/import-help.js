@@ -27,6 +27,10 @@ export function renderImportHelp(root) {
       el('h1', { class: 'screen-title', tabindex: '-1', text: 'Sitelerden aktarma' }),
       el('p', { class: 'help__lead', text: 'repertuarim.com ve akorlar.com’daki bir şarkıyı; adı, sanatçısı, orijinal tonu ve akorlarıyla tek dokunuşla aktarabilirsiniz.' }),
 
+      el('div', { class: 'notice', id: 'bookmarklet-update-note' },
+        el('p', { text: 'Yer imini 30 Ekim 2026’dan önce eklediyseniz bir kez güncelleyin: aşağıdaki düğmeyle kodu yeniden kopyalayıp yer iminin adresine yapıştırın. Yeni yer imi akorları sitede göründükleri yere tam olarak yerleştirir ve bundan sonra kendiliğinden güncel kalır.' })
+      ),
+
       el('section', { class: 'help__section' },
         el('h2', { class: 'section-title', text: 'Nasıl çalışır?' }),
         steps([
@@ -34,7 +38,7 @@ export function renderImportHelp(root) {
           'Tarayıcınızın yer imlerinden “Repertuvarım’a aktar”a dokunun. Şarkı panoya kopyalanır.',
           'Repertuvarım’da “Şarkı ekle” → “Panodan aktar”a dokunun ve kaydedin.',
         ]),
-        el('p', { class: 'field__hint', text: 'Bunun için yer imini tarayıcınıza bir kez eklemeniz gerekiyor (aşağıda). Tarayıcılar bir sitenin başka bir sitedeki sayfayı okumasına izin vermediği için bağlantıyı yapıştırarak aktarmak mümkün değil; yer imi sayfanın içinde çalıştığı için bu engel yok. Şarkılar hiçbir sunucuya gönderilmez.' })
+        el('p', { class: 'field__hint', text: 'Bunun için yer imini tarayıcınıza bir kez eklemeniz gerekiyor (aşağıda). Yer imi, akorların sitede göründüğü yeri ölçer; böylece akorlar uygulamada da aynı hecelerin üstüne gelir. Tarayıcılar bir sitenin başka bir sitedeki sayfayı okumasına izin vermediği için bağlantıyı yapıştırarak aktarmak mümkün değil; yer imi sayfanın içinde çalıştığı için bu engel yok. Şarkılar hiçbir sunucuya gönderilmez.' })
       ),
 
       el('section', { class: 'help__section' },
@@ -64,6 +68,12 @@ export function renderImportHelp(root) {
           'Herhangi bir sayfayı yer imlerine ekleyin (⋮ → ☆), sonra yer imini düzenleyip adını “Repertuvarım’a aktar”, adresini kopyaladığınız kod yapın.',
           'Kullanırken: sitede şarkıyı açın, adres çubuğuna “Repertuvarım” yazın ve önerilerdeki yer imine dokunun.',
         ])
+      ),
+
+      el('section', { class: 'help__section' },
+        el('h2', { class: 'section-title', text: 'Başka bir uygulamadan: ekran görüntüsü' }),
+        el('p', {}, 'Herhangi bir akor uygulamasında ya da sitede şarkının ekran görüntüsünü alın. “Şarkı ekle” → “Ekran görüntüsünden” ile görüntüyü seçin: sözler okunur ve akorlar görüntüde durdukları hecenin üstüne yerleşir. Uzun şarkılarda birden çok görüntü seçebilirsiniz; üst üste binen satırlar bir kez yazılır.'),
+        el('p', { class: 'field__hint', text: 'Okuyucu ilk kullanımda bir kez indirilir (yaklaşık 6 MB), sonra internetsiz çalışır. Görüntü telefonunuzda okunur, hiçbir yere gönderilmez. Okuma hatası olabileceği için sözleri kaydetmeden önce kontrol edin.' })
       ),
 
       el('section', { class: 'help__section' },

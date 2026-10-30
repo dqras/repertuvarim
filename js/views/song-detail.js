@@ -6,6 +6,8 @@
  * - Taşınmışsa üstte "orijinal tona dön" düğmesi ve yeni ton görünür.
  * - Seçilen transpoze şarkıya özel, yazı boyutu bütün şarkılar için hatırlanır.
  * - "Ekran açık" seçiliyse şarkı ekranındayken telefonun ekranı kararmaz.
+ * - "Setliste ekle" şarkıyı bir ya da birkaç setliste koyar. Şarkı bir setlistten
+ *   açıldıysa üstte ve sözlerin sonunda "Önceki / Sıradaki" düğmeleri çıkar.
  * Kayıtlı şarkıya hiçbir zaman dokunulmaz; taşıma yalnızca görüntüdedir.
  */
 import { el, icon } from '../lib/dom.js';
@@ -13,6 +15,7 @@ import { keysLike, normalizeSteps, parseKey, keyName } from '../music/chords.js'
 import { guessKey, transposeContent } from '../music/song-text.js';
 import { renderSongContent, watchLayout } from '../music/render.js';
 import { categoryTag } from './components.js';
+import { navigate } from '../router.js';
 
 export const FONT_SCALE = { min: 0.8, max: 1.8, step: 0.1, fallback: 1 };
 
@@ -22,12 +25,17 @@ export const FONT_SCALE = { min: 0.8, max: 1.8, step: 0.1, fallback: 1 };
  *   onToggleFavorite(song) → şarkı    favori düğmesi
  *   loadPrefs(songId) → { steps, scale, keepAwake }
  *   savePref(name, value, songId)     name: 'steps' | 'scale' | 'keepAwake'
+ *   onAddToSetlist(song)              "Setliste ekle" düğmesi
  */
-export function createSongView(root, { categoryById, onToggleFavorite, loadPrefs, savePref }) {
+export function createSongView(root, { categoryById, onToggleFavorite, loadPrefs, savePref, onAddToSetlist }) {
   let current = null; // { song, steps, scale, keepAwake, layout, ui }
   let wakeLock = null;
 
-  async function show(song) {
+  /**
+   * Şarkıyı gösterir. setlist verilirse (şarkı bir setlistten açıldıysa):
+   *   { id, name, index, total, prev: şarkı | null, next: şarkı | null }
+   */
+  async function show(song, { setlist = null } = {}) {
     hide();
     if (!song) {
       renderMissing();
@@ -36,6 +44,7 @@ export function createSongView(root, { categoryById, onToggleFavorite, loadPrefs
     const prefs = await loadPrefs(song.id);
     current = {
       song,
+      setlist,
       sourceKey: song.key || guessKey(song.content),
       steps: normalizeSteps(prefs.steps ?? 0),
       scale: clampScale(prefs.scale ?? FONT_SCALE.fallback),
@@ -105,6 +114,7 @@ export function createSongView(root, { categoryById, onToggleFavorite, loadPrefs
       el(
         'article',
         { class: 'page page--screen song-view' },
+        current.setlist ? setlistNav('top') : null,
         el(
           'header',
           { class: 'song-view__header' },
@@ -118,6 +128,7 @@ export function createSongView(root, { categoryById, onToggleFavorite, loadPrefs
             { class: 'song-detail__actions' },
             ui.favorite,
             el('a', { class: 'pill-link', id: 'edit-song', href: editHref }, icon('edit'), 'Düzenle'),
+            el('button', { type: 'button', class: 'fav-toggle fav-toggle--plain', id: 'song-add-setlist', onclick: () => onAddToSetlist?.(current.song) }, icon('list'), 'Setliste ekle'),
             ui.awake
           ),
           song.isSample ? el('p', { class: 'song-detail__sample', text: 'Örnek şarkı' }) : null
@@ -129,7 +140,8 @@ export function createSongView(root, { categoryById, onToggleFavorite, loadPrefs
         hasContent ? ui.warning : null,
         hasContent
           ? ui.text
-          : el('p', { class: 'placeholder' }, 'Bu şarkıya henüz söz ve akor eklenmedi. ', el('a', { href: editHref }, 'Düzenle'), ' ile ekleyebilirsiniz.')
+          : el('p', { class: 'placeholder' }, 'Bu şarkıya henüz söz ve akor eklenmedi. ', el('a', { href: editHref }, 'Düzenle'), ' ile ekleyebilirsiniz.'),
+        current.setlist ? setlistNav('bottom') : null
       ),
       el(
         'div',
@@ -146,6 +158,29 @@ export function createSongView(root, { categoryById, onToggleFavorite, loadPrefs
     applyScale();
     drawText();
     current.layout = hasContent ? watchLayout(ui.text) : null;
+  }
+
+  /** Setlistte önceki/sıradaki şarkıya geçiş. Geri düğmesi her zaman setliste döner. */
+  function setlistNav(place) {
+    const { id, name, index, total, prev, next } = current.setlist;
+    const go = (song) => navigate(`/setlist/${encodeURIComponent(id)}/${encodeURIComponent(song.id)}`, { replace: true });
+    const button = (song, direction) =>
+      song
+        ? el('button', { type: 'button', class: `setlist-nav__button setlist-nav__button--${direction}`, id: `setlist-${direction}-${place}`, onclick: () => go(song) },
+            direction === 'prev' ? icon('back') : null,
+            el('span', { class: 'setlist-nav__label' },
+              el('span', { class: 'setlist-nav__hint', text: direction === 'prev' ? 'Önceki' : 'Sıradaki' }),
+              el('span', { class: 'setlist-nav__title', text: song.title })),
+            direction === 'next' ? icon('back', 'icon setlist-nav__next-icon') : null)
+        : el('span', { class: 'setlist-nav__end', text: direction === 'prev' ? 'İlk şarkı' : 'Son şarkı' });
+    return el(
+      'nav',
+      { class: `setlist-nav setlist-nav--${place}`, 'aria-label': `Setlist: ${name}` },
+      place === 'top'
+        ? el('a', { class: 'setlist-nav__where', href: `#/setlist/${encodeURIComponent(id)}` }, icon('list'), `${name} · ${index + 1}/${total}`)
+        : null,
+      el('div', { class: 'setlist-nav__row' }, button(prev, 'prev'), button(next, 'next'))
+    );
   }
 
   /** Sözleri ve akorları güncel transpozeyle çizer; çubuk ve durum yazısını günceller. */

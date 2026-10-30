@@ -26,7 +26,8 @@ const PRELOAD_MARGIN = '800px 0px'; // listenin sonuna bu kadar yaklaşınca dev
  * onRemoveSamples(): "Örnek şarkıları kaldır" düğmesine basılınca çağrılır.
  * Döndürdüğü setSongs(songs), kayıtlı şarkılar değişince listeyi yeniler.
  */
-export function createSongListView(root, { songs, categories, onRemoveSamples }) {
+export function createSongListView(root, { songs, categories: initialCategories, onRemoveSamples }) {
+  let categories = initialCategories;
   const ui = {
     search: root.querySelector('#search'),
     clearSearch: root.querySelector('#search-clear'),
@@ -42,7 +43,7 @@ export function createSongListView(root, { songs, categories, onRemoveSamples })
     drafts: root.querySelector('#draft-notices'),
   };
 
-  const categoryById = new Map(categories.map((category) => [category.id, category]));
+  let categoryById = new Map(categories.map((category) => [category.id, category]));
 
   // Her şarkı için arama metni bir kez hazırlanır; satır ilk gösterildiğinde oluşturulur.
   const toEntries = (list) =>
@@ -99,6 +100,16 @@ export function createSongListView(root, { songs, categories, onRemoveSamples })
     if (chip) setFilter(chip.dataset.filter);
   });
 
+  /** Kategoriler değişince (ekleme, ad, renk, sıra, silme) düğmeleri ve etiketleri yeniler. */
+  function setCategories(next) {
+    categories = next;
+    categoryById = new Map(categories.map((category) => [category.id, category]));
+    if (state.filter.startsWith('cat:') && !categoryById.has(state.filter.slice(4))) state.filter = 'all';
+    for (const entry of entries) entry.row = null; // etiketler yeni adlarla çizilsin
+    renderChips();
+    render({ keepShown: true });
+  }
+
   function clearSearch() {
     ui.search.value = '';
     state.query = '';
@@ -126,6 +137,12 @@ export function createSongListView(root, { songs, categories, onRemoveSamples })
         color: category.color,
       })),
     ];
+    const manage = el(
+      'a',
+      { class: 'chip chip--manage', id: 'manage-categories', href: '#/kategoriler', title: 'Kategorileri düzenle' },
+      icon('tag', 'icon chip__icon'),
+      'Düzenle'
+    );
     ui.chips.replaceChildren(
       ...chips.map((chip) =>
         el(
@@ -139,7 +156,8 @@ export function createSongListView(root, { songs, categories, onRemoveSamples })
           chip.iconName ? icon(chip.iconName, 'icon chip__icon') : null,
           chip.label
         )
-      )
+      ),
+      manage
     );
   }
 
@@ -321,7 +339,7 @@ export function createSongListView(root, { songs, categories, onRemoveSamples })
     return entry.row;
   }
 
-  return { setSongs, setDrafts };
+  return { setSongs, setDrafts, setCategories, setFilter };
 }
 
 function loadSort() {

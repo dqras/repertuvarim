@@ -6,6 +6,9 @@
  * - "Kaydet" alanları denetler; eksik ya da hatalı alanın altında ne yapılacağı yazar.
  * - "Panodan aktar": repertuarim.com / akorlar.com'dan "Repertuvarım'a aktar" yer imiyle
  *   kopyalanan şarkı; adı, sanatçısı, tonu ve akorlarıyla forma yerleşir (bkz. #/aktar).
+ * - "Ekran görüntüsünden": herhangi bir akor uygulamasının ekran görüntüleri okunur;
+ *   akorlar görüntüde durdukları hecenin üstüne yerleşir (bkz. music/ocr.js). Birden çok
+ *   görüntü seçilebilir; görüntüler arasında tekrar eden satırlar bir kez yazılır.
  * - Akorları ayrı satırlarda olan bir metin yapıştırılırsa tek dokunuşla [Am] biçimine
  *   çevrilebilir (Geri al ile eski hâline döner). Tanınmayan akorlar için uyarı çıkar.
  * - Düzenlerken en altta "Şarkıyı sil" bulunur ve önce onay ister.
@@ -22,6 +25,7 @@ import {
   validateSongForm,
 } from '../data/model.js';
 import { analyzeChords, convertChordSheet, countChordLines, IMPORT_HEADER, parseImport } from '../music/song-text.js';
+import { OcrError, readChordScreenshot } from '../music/ocr.js';
 import { normalizeKeyName } from '../data/model.js';
 import { confirmDialog } from './dialog.js';
 import { showMessage } from './components.js';
@@ -35,7 +39,8 @@ const KEY_SUGGESTIONS = [
 const FIELD_ORDER = ['title', 'artist', 'key', 'capo', 'bpm', 'content'];
 
 /**
- * root: #view-editor bölümü. categories: kategori listesi.
+ * root: #view-editor bölümü. categories: kategori listesi ya da onu döndüren fonksiyon
+ * (kategoriler değişebildiği için form her açılışta güncel listeyi kullanır).
  * actions:
  *   loadDraft(key) → taslak | null      saveDraft(key, form)      deleteDraft(key)
  *   save(value, songId | null) → şarkı  (kaydeder ve uygun ekrana geçer)
@@ -126,7 +131,7 @@ export function createSongEditor(root, { categories, actions }) {
       categories: el(
         'div',
         { class: 'chips chips--wrap', id: 'ed-categories', role: 'group', 'aria-label': 'Kategoriler' },
-        categories.map((category) =>
+        (typeof categories === 'function' ? categories() : categories).map((category) =>
           el(
             'button',
             {
@@ -156,15 +161,31 @@ export function createSongEditor(root, { categories, actions }) {
       'Akor ekle'
     );
 
+    // Ekran görüntüsü seçici (görünmez; düğmeler açar)
+    ui.shotInput = el('input', { type: 'file', accept: 'image/*', multiple: true, id: 'ed-shot-input', hidden: true });
+    ui.shotInput.addEventListener('change', () => {
+      const files = [...ui.shotInput.files];
+      ui.shotInput.value = '';
+      if (files.length) readScreenshots(files);
+    });
+    const shotButton = (id, primary) =>
+      el(
+        'button',
+        { type: 'button', class: `button ${primary ? 'button--primary' : 'button--quiet'} button--small`, id, onclick: () => ui.shotInput.click() },
+        icon('image'),
+        'Ekran görüntüsünden'
+      );
+
     const importBar = isEdit
       ? null
       : el(
           'div',
           { class: 'notice notice--import', id: 'ed-import' },
-          el('p', { class: 'notice__text', text: 'repertuarim.com ya da akorlar.com’dan mı ekliyorsunuz?' }),
+          el('p', { class: 'notice__text', text: 'Başka bir yerden mi ekliyorsunuz? Bir akor uygulamasının ekran görüntüsünü seçin ya da repertuarim.com / akorlar.com’dan aktarın.' }),
           el('div', { class: 'notice__actions' },
-            el('a', { class: 'button button--quiet button--small', href: '#/aktar' }, 'Nasıl?'),
-            el('button', { type: 'button', class: 'button button--primary button--small', id: 'ed-import-clipboard', onclick: importFromClipboard }, 'Panodan aktar'))
+            shotButton('ed-import-shot', true),
+            el('button', { type: 'button', class: 'button button--quiet button--small', id: 'ed-import-clipboard', onclick: importFromClipboard }, 'Panodan aktar'),
+            el('a', { class: 'button button--quiet button--small', href: '#/aktar' }, 'Nasıl?'))
         );
 
     const restoredNotice = restoredAt
@@ -196,14 +217,15 @@ export function createSongEditor(root, { categories, actions }) {
         required: true,
         hint: 'Akoru, sözün çalındığı yere köşeli parantezle yazın: [Am]Bu gece yine aklımdasın',
         // Çevirme önerisi metin kutusunun üstünde: uzun bir şarkı yapıştırılınca da görünür.
-        tools: [el('div', { class: 'editor__tools' }, chordButton), ui.sheetNotice],
+        tools: [el('div', { class: 'editor__tools' }, chordButton, shotButton('ed-shot', false), ui.shotInput), ui.sheetNotice],
         extra: [ui.chordHint],
       }),
       el(
         'fieldset',
         { class: 'field fieldset' },
         el('legend', { class: 'field__label', text: 'Kategoriler' }),
-        ui.categories
+        ui.categories,
+        el('a', { class: 'field__link', href: '#/kategoriler', id: 'ed-manage-categories' }, 'Kategorileri düzenle')
       ),
       el('div', { class: 'field' }, el('p', { class: 'field__label', text: 'Favori' }), ui.favorite),
       field('ed-notes', 'Notlarım', ui.notes),
@@ -226,6 +248,8 @@ export function createSongEditor(root, { categories, actions }) {
     setStatus(restoredAt ? 'restored' : 'clean');
     sheetUndo = null;
     importUndo = null;
+    shotUndo = null;
+    shotBusy = false;
     refreshContentHelpers();
 
     // --- Olaylar ---
@@ -297,6 +321,19 @@ export function createSongEditor(root, { categories, actions }) {
     }
     const content = ui.content.value;
 
+    if (shotBusy) return; // okuma sürerken ilerleme yazısı kalsın
+
+    if (shotUndo && content === shotUndo.after) {
+      ui.sheetNotice.replaceChildren(
+        el('p', { class: 'notice__text', text: shotUndo.message }),
+        el('button', { type: 'button', class: 'button button--quiet button--small', id: 'ed-shot-undo', onclick: undoScreenshots }, 'Geri al')
+      );
+      ui.sheetNotice.hidden = false;
+      refreshChordHint(content);
+      return;
+    }
+    shotUndo = null;
+
     if (importUndo && content === importUndo.after) {
       ui.sheetNotice.replaceChildren(
         el('p', { class: 'notice__text', text: `“${importUndo.title}” aktarıldı: şarkı adı, sanatçı, ton ve akorlar dolduruldu. Kontrol edip Kaydet’e basın.` }),
@@ -338,6 +375,83 @@ export function createSongEditor(root, { categories, actions }) {
     if (emptyCount) parts.push('Boş akor parantezi var: [ ]. İçine akorun adını yazın ya da silin.');
     ui.chordHint.textContent = parts.join(' ');
     ui.chordHint.hidden = parts.length === 0;
+  }
+
+  // --- Ekran görüntüsünden -------------------------------------------------------------
+
+  let shotUndo = null; // { before, after, message }
+  let shotBusy = false;
+
+  function showShotProgress(text) {
+    ui.sheetNotice.replaceChildren(el('p', { class: 'notice__text', id: 'ed-shot-progress' }, el('span', { class: 'spinner', 'aria-hidden': 'true' }), text));
+    ui.sheetNotice.hidden = false;
+  }
+
+  async function readScreenshots(files) {
+    if (shotBusy) return;
+    shotBusy = true;
+    const before = ui.content.value;
+    const sheets = [];
+    let failure = null;
+    for (const [index, file] of files.entries()) {
+      const which = files.length > 1 ? ` (${index + 1}/${files.length})` : '';
+      showShotProgress(`Görüntü okunuyor${which}…`);
+      try {
+        const sheet = await readChordScreenshot(file, {
+          onProgress: ({ step, progress }) => {
+            if (step === 'download') showShotProgress('Okuyucu hazırlanıyor… İlk seferde yaklaşık 6 MB indirilir, sonra internetsiz çalışır.');
+            else if (step === 'language') showShotProgress(`Türkçe dil verisi hazırlanıyor… %${Math.round(progress * 100)}`);
+            else showShotProgress(`Görüntü okunuyor${which}… %${Math.round(progress * 100)}`);
+          },
+        });
+        sheets.push(sheet.text);
+      } catch (error) {
+        failure = error;
+        break;
+      }
+    }
+    shotBusy = false;
+
+    if (!sheets.length) {
+      refreshContentHelpers();
+      const reason = failure instanceof OcrError ? failure.reason : 'engine';
+      const messages = {
+        offline: 'Ekran görüntüsünden okumak için ilk seferde internet gerekiyor (yaklaşık 6 MB bir kez indirilir). Sonra internetsiz de çalışır.',
+        download: 'Okuyucu indirilemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.',
+        image: 'Bu dosya açılamadı. Bir ekran görüntüsü (resim) seçin.',
+        empty: 'Görüntüde okunabilen yazı bulunamadı. Akorların ve sözlerin net göründüğü bir ekran görüntüsü seçin.',
+        engine: 'Görüntü okunamadı. Tekrar deneyin; olmazsa sözleri kopyalayıp yapıştırın.',
+      };
+      showMessage(messages[reason] ?? messages.engine, { tone: 'error', duration: 9000 });
+      return;
+    }
+
+    const sheet = joinScreens(sheets);
+    const { text } = convertChordSheet(sheet);
+    const lines = text.split('\n').filter((line) => line.trim()).length;
+    const after = before.trim() ? `${before.replace(/\s+$/, '')}\n\n${text}` : text;
+    shotUndo = {
+      before,
+      after,
+      message:
+        `${files.length > 1 ? `${sheets.length} görüntüden` : 'Görüntüden'} ${lines} satır okundu ve akorlar yerleştirildi. ` +
+        'Okuma hatası olabilir: sözleri kontrol edip gerekirse düzeltin.' +
+        (failure ? ' (Bazı görüntüler okunamadı.)' : ''),
+    };
+    sheetUndo = null;
+    importUndo = null;
+    setContent(after);
+    clearError('ed-content');
+    refreshContentHelpers();
+    ui.content.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  function undoScreenshots() {
+    if (!shotUndo) return;
+    const { before } = shotUndo;
+    shotUndo = null;
+    setContent(before);
+    refreshContentHelpers();
   }
 
   // --- Sitelerden aktarım ------------------------------------------------------------
@@ -616,4 +730,30 @@ function autosize(area) {
 
 function formatTime(time) {
   return new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit' }).format(time ?? Date.now());
+}
+
+/**
+ * Art arda çekilmiş ekran görüntülerinin metinlerini birleştirir. Bir görüntünün sonu ile
+ * sonrakinin başı aynı satırları içeriyorsa (kaydırırken üst üste binen kısım) bunlar
+ * bir kez yazılır.
+ */
+export function joinScreens(sheets) {
+  let lines = [];
+  for (const sheet of sheets) {
+    const next = sheet.split('\n');
+    const norm = (line) => line.replace(/\s+/g, ' ').trim().toLocaleLowerCase('tr-TR');
+    let overlap = 0;
+    for (let size = Math.min(lines.length, next.length, 16); size > 0; size -= 1) {
+      const tail = lines.slice(lines.length - size).map(norm);
+      const head = next.slice(0, size).map(norm);
+      if (tail.join('\n') === head.join('\n') && head.some(Boolean)) {
+        overlap = size;
+        break;
+      }
+    }
+    const rest = next.slice(overlap);
+    if (lines.length && !overlap && lines[lines.length - 1].trim() && rest[0]?.trim()) lines.push('');
+    lines = lines.concat(rest);
+  }
+  return lines.join('\n');
 }
