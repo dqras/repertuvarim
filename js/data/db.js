@@ -23,12 +23,16 @@ const UPGRADES = [
   (db) => {
     db.createObjectStore('drafts', { keyPath: 'key' });
   },
+  // Sürüm 3: setlistler (sıralı şarkı listeleri)
+  (db) => {
+    db.createObjectStore('setlists', { keyPath: 'id' });
+  },
 ];
 const DB_VERSION = UPGRADES.length;
 
 /** Veritabanı hatası; reason kullanıcıya gösterilecek mesajı belirler. */
 export class StorageError extends Error {
-  /** reason: 'unsupported' | 'open' | 'quota' | 'write' | 'notFound' */
+  /** reason: 'unsupported' | 'open' | 'quota' | 'write' | 'notFound' | 'invalid' (detail: mesaj) */
   constructor(reason, cause) {
     super(cause?.message ? `${reason}: ${cause.message}` : reason);
     this.name = 'StorageError';
@@ -48,6 +52,8 @@ export function describeStorageError(error) {
       return 'Bu şarkı artık kayıtlı değil.';
     case 'write':
       return 'Değişiklik kaydedilemedi. Tekrar deneyin.';
+    case 'invalid':
+      return error.detail || 'Bu ad kullanılamaz.';
     default:
       return 'Kayıtlı veriler açılamadı. Uygulamayı kapatıp yeniden açın.';
   }

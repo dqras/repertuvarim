@@ -174,3 +174,36 @@ export function normalizeCategory(raw = {}, fallbackOrder = 0) {
     createdAt: isNumber(raw.createdAt) ? raw.createdAt : Date.now(),
   };
 }
+
+/** Kategori renkleri (css/styles.css içindeki --cat-… değişkenleri). */
+export const CATEGORY_COLORS = ['rose', 'sky', 'coral', 'violet', 'green', 'teal', 'sand', 'slate'];
+export const MAX_NAME_LENGTH = 40;
+
+/**
+ * Kategori ya da setlist adını denetler. others: aynı türden diğer kayıtlar (aynı ad
+ * ikinci kez kullanılamaz; büyük/küçük harf ve Türkçe harfler fark etmez).
+ * Sonuç: { ok, name, error }
+ */
+export function validateName(raw, others = [], { label = 'Ad' } = {}) {
+  const name = toText(raw).replace(/\s+/g, ' ').trim();
+  if (!name) return { ok: false, name, error: `${label} boş olamaz.` };
+  if (name.length > MAX_NAME_LENGTH) return { ok: false, name, error: `${label} en fazla ${MAX_NAME_LENGTH} harf olabilir.` };
+  const folded = name.toLocaleLowerCase('tr-TR');
+  if (others.some((other) => toText(other.name).trim().toLocaleLowerCase('tr-TR') === folded)) {
+    return { ok: false, name, error: `“${name}” adında bir kayıt zaten var.` };
+  }
+  return { ok: true, name, error: '' };
+}
+
+/** Setlist: adı ve sıralı şarkı kimlikleri (bir şarkı bir setlistte bir kez bulunur). */
+export function normalizeSetlist(raw = {}) {
+  const songIds = Array.isArray(raw.songIds) ? [...new Set(raw.songIds.map(toText).filter(Boolean))] : [];
+  const now = Date.now();
+  return {
+    id: toText(raw.id),
+    name: toText(raw.name).trim(),
+    songIds,
+    createdAt: isNumber(raw.createdAt) ? raw.createdAt : now,
+    updatedAt: isNumber(raw.updatedAt) ? raw.updatedAt : now,
+  };
+}

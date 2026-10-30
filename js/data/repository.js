@@ -3,7 +3,7 @@
  * Veriler cihazdaki veritabanında (IndexedDB) saklanır; ayrıntılar db.js'de.
  */
 import { openDatabase, transact, result, StorageError } from './db.js';
-import { normalizeSong, normalizeCategory, createId } from './model.js';
+import { normalizeSong, normalizeCategory, normalizeSetlist, createId, validateName, CATEGORY_COLORS } from './model.js';
 import { DEFAULT_CATEGORIES } from './defaults.js';
 import { SAMPLE_SONGS } from './sample-songs.js';
 
@@ -106,13 +106,141 @@ export async function updateSong(id, fields) {
   return song;
 }
 
-/** Şarkıyı (ve varsa taslağını) siler. */
+/** Şarkıyı (ve varsa taslağını) siler; bulunduğu setlistlerden de çıkarır. */
 export async function deleteSong(id) {
-  await transact(await init(), ['songs', 'drafts', 'settings'], 'readwrite', ({ songs, drafts, settings }) => {
+  await transact(await init(), ['songs', 'drafts', 'settings', 'setlists'], 'readwrite', async ({ songs, drafts, settings, setlists }) => {
     songs.delete(id);
     drafts.delete(id);
     settings.delete(`transpose:${id}`);
+    for (const row of await result(setlists.getAll())) {
+      if (row.songIds?.includes(id)) setlists.put({ ...row, songIds: row.songIds.filter((songId) => songId !== id), updatedAt: Date.now() });
+    }
   });
+  notifyChange();
+}
+
+// --- Kategoriler: ekleme, ad/renk değiştirme, sıralama, silme -------------------
+
+/** Yeni kategori ekler. Ad boşsa ya da aynı adda kategori varsa StorageError('invalid'). */
+export async function createCategory({ name, color }) {
+  const category = await transact(await init(), 'categories', 'readwrite', async ({ categories }) => {
+    const rows = await result(categories.getAll());
+    const check = validateName(name, rows, { label: 'Kategori adı' });
+    if (!check.ok) throw Object.assign(new StorageError('invalid'), { detail: check.error });
+    const order = rows.reduce((max, row) => Math.max(max, row.order ?? 0), -1) + 1;
+    const created = normalizeCategory({
+      id: createId(),
+      name: check.name,
+      color: CATEGORY_COLORS.includes(color) ? color : CATEGORY_COLORS[rows.length % CATEGORY_COLORS.length],
+      order,
+      createdAt: Date.now(),
+    }, order);
+    await result(categories.add(created));
+    return created;
+  });
+  notifyChange();
+  return category;
+}
+
+/** Kategorinin adını ve/veya rengini değiştirir. */
+export async function updateCategory(id, { name, color }) {
+  const category = await transact(await init(), 'categories', 'readwrite', async ({ categories }) => {
+    const rows = await result(categories.getAll());
+    const row = rows.find((item) => item.id === id);
+    if (!row) throw new StorageError('notFound');
+    const updated = { ...row };
+    if (name !== undefined) {
+      const check = validateName(name, rows.filter((item) => item.id !== id), { label: 'Kategori adı' });
+      if (!check.ok) throw Object.assign(new StorageError('invalid'), { detail: check.error });
+      updated.name = check.name;
+    }
+    if (color !== undefined && CATEGORY_COLORS.includes(color)) updated.color = color;
+    await result(categories.put(updated));
+    return normalizeCategory(updated);
+  });
+  notifyChange();
+  return category;
+}
+
+/** Kategorileri verilen sıraya koyar (ids: bütün kategori kimlikleri, yeni sırasıyla). */
+export async function reorderCategories(ids) {
+  await transact(await init(), 'categories', 'readwrite', async ({ categories }) => {
+    const rows = await result(categories.getAll());
+    const position = new Map(ids.map((id, index) => [id, index]));
+    for (const row of rows) {
+      const order = position.has(row.id) ? position.get(row.id) : ids.length + (row.order ?? 0);
+      if (order !== row.order) categories.put({ ...row, order });
+    }
+  });
+  notifyChange();
+}
+
+/** Kategoriyi siler. Şarkılar silinmez; yalnızca bu kategoriden çıkarılır. Kaç şarkının etkilendiğini döndürür. */
+export async function deleteCategory(id) {
+  const changed = await transact(await init(), ['categories', 'songs'], 'readwrite', async ({ categories, songs }) => {
+    categories.delete(id);
+    let count = 0;
+    for (const row of await result(songs.getAll())) {
+      if (Array.isArray(row.categoryIds) && row.categoryIds.includes(id)) {
+        songs.put({ ...row, categoryIds: row.categoryIds.filter((categoryId) => categoryId !== id) });
+        count += 1;
+      }
+    }
+    return count;
+  });
+  notifyChange();
+  return changed;
+}
+
+// --- Setlistler -------------------------------------------------------------
+
+export async function listSetlists() {
+  const rows = await transact(await init(), 'setlists', 'readonly', ({ setlists }) => result(setlists.getAll()));
+  return rows.map(normalizeSetlist).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function getSetlist(id) {
+  const row = await transact(await init(), 'setlists', 'readonly', ({ setlists }) => result(setlists.get(id)));
+  return row ? normalizeSetlist(row) : null;
+}
+
+export async function createSetlist(name, songIds = []) {
+  const setlist = await transact(await init(), 'setlists', 'readwrite', async ({ setlists }) => {
+    const check = validateName(name, await result(setlists.getAll()), { label: 'Setlist adı' });
+    if (!check.ok) throw Object.assign(new StorageError('invalid'), { detail: check.error });
+    const now = Date.now();
+    const created = normalizeSetlist({ id: createId(), name: check.name, songIds, createdAt: now, updatedAt: now });
+    await result(setlists.add(created));
+    return created;
+  });
+  notifyChange();
+  return setlist;
+}
+
+/** Setlisti değiştirir: changes = { name?, songIds? } (songIds yeni sırayı verir). */
+export async function updateSetlist(id, changes) {
+  const setlist = await transact(await init(), 'setlists', 'readwrite', async ({ setlists }) => {
+    const rows = await result(setlists.getAll());
+    const row = rows.find((item) => item.id === id);
+    if (!row) throw new StorageError('notFound');
+    const updated = { ...row, updatedAt: Date.now() };
+    if (changes.name !== undefined) {
+      const check = validateName(changes.name, rows.filter((item) => item.id !== id), { label: 'Setlist adı' });
+      if (!check.ok) throw Object.assign(new StorageError('invalid'), { detail: check.error });
+      updated.name = check.name;
+    }
+    if (changes.songIds !== undefined) updated.songIds = changes.songIds;
+    const normalized = normalizeSetlist(updated);
+    await result(setlists.put(normalized));
+    return normalized;
+  });
+  notifyChange();
+  return setlist;
+}
+
+/** Setlisti siler; şarkılara dokunulmaz. */
+export async function deleteSetlist(id) {
+  await transact(await init(), 'setlists', 'readwrite', ({ setlists }) => result(setlists.delete(id)));
   notifyChange();
 }
 
