@@ -1280,6 +1280,12 @@ a {
   font-size: var(--text-sm);
 }
 
+.status__credit {
+  max-width: none;
+  margin-top: var(--space-6);
+  text-align: center;
+}
+
 .startup-error__text {
   max-width: 36rem;
   margin-top: var(--space-3);
@@ -1600,6 +1606,30 @@ a {
 
 .sl--chords .p {
   position: relative;
+}
+
+/* Satır sonundaki sözsüz akorlar: görünmez kopya, bloğa akorun genişliğini verir. */
+.c-ghost {
+  display: inline-block;
+  visibility: hidden;
+  font-size: 0.85em;
+  font-weight: 700;
+  line-height: 0;
+  white-space: nowrap;
+}
+
+.c-ghost::before {
+  content: attr(data-chord);
+}
+
+/* Satır sonundaki akor grubu: bir bütün olarak alt satıra geçer; satırdan genişse kendi içinde kırılır. */
+.w-tail {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  column-gap: 0.3em;
+  max-width: 100%;
+  vertical-align: bottom;
 }
 
 .c {
