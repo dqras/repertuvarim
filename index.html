@@ -72,6 +72,13 @@
           </div>
         </div>
         <div class="draft-notices" id="draft-notices" hidden></div>
+        <div class="notice notice--import backup-reminder" id="backup-reminder" hidden>
+          <p class="notice__text" id="backup-reminder-text"></p>
+          <div class="notice__actions">
+            <button class="button button--quiet button--small" id="backup-reminder-later" type="button">Sonra</button>
+            <a class="button button--primary button--small" id="backup-reminder-go" href="#/yedek">Yedek al</a>
+          </div>
+        </div>
         <div class="notice" id="sample-notice" hidden>
           <p class="notice__text" id="sample-notice-text"></p>
           <button class="button button--quiet button--small" id="remove-samples" type="button">Örnek şarkıları kaldır</button>
@@ -115,6 +122,9 @@
     <!-- Sitelerden aktarma: içeriğini js/views/import-help.js çizer -->
     <section class="view" id="view-import" hidden></section>
 
+    <!-- Yedekleme: js/views/backup.js -->
+    <section class="view" id="view-backup" hidden></section>
+
     <!-- Durum -->
     <section class="view" id="view-status" aria-labelledby="status-title" hidden>
       <div class="page page--screen">
@@ -145,11 +155,18 @@
             <dd><span class="version" id="state-storage">—</span></dd>
           </div>
           <div class="status__row">
+            <dt>Son yedek</dt>
+            <dd><span class="version" id="state-backup">—</span></dd>
+          </div>
+          <div class="status__row">
             <dt>Sürüm</dt>
             <dd><span class="version" id="state-version">—</span></dd>
           </div>
         </dl>
-        <button class="button button--primary status__install" id="install-button" type="button" hidden>Ana ekrana ekle</button>
+        <div class="status__actions">
+          <a class="button button--quiet" id="status-backup" href="#/yedek">Yedekleme</a>
+          <button class="button button--primary" id="install-button" type="button" hidden>Ana ekrana ekle</button>
+        </div>
         <p class="status__note status__credit" id="status-credit">Doruk tarafından geliştirilmiştir.</p>
       </div>
     </section>

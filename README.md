@@ -11,27 +11,28 @@ Adres: https://dqras.github.io/repertuvarim/
 | `index.html` | Uygulamanın sayfası ve ekranların iskeleti |
 | `css/styles.css` | Görünüm: renkler, yazılar, yerleşim |
 | `js/app.js` | Başlangıç noktası; verileri yükler, ekranları hazırlar |
-| `js/router.js` | Ekranlar arası geçiş (`#/`, `#/sarki/…`, `#/sarki/…/duzenle`, `#/yeni`, `#/aktar`, `#/durum`, `#/kategoriler`, `#/setlistler`, `#/setlist/…`, `#/favoriler`, `#/notalar`, `#/nota/…`) |
+| `js/router.js` | Ekranlar arası geçiş (`#/`, `#/sarki/…`, `#/sarki/…/duzenle`, `#/yeni`, `#/aktar`, `#/durum`, `#/kategoriler`, `#/setlistler`, `#/setlist/…`, `#/favoriler`, `#/notalar`, `#/nota/…`, `#/yedek`) |
 | `js/pwa.js` | Kurulum, güncelleme ve bağlantı durumu |
 | `js/data/repository.js` | Veri erişimi: ekranlar şarkılara yalnızca buradan ulaşır |
 | `js/data/db.js` | Cihazdaki veritabanı (IndexedDB), sürüm yükseltmeleri, kalıcı depolama izni |
+| `js/data/backup.js` | Yedek dosyası: dışa aktarma, dosya denetimi, mevcut kayıtlarla karşılaştırma (hiçbir kayıt silinmez) |
 | `js/data/model.js` | Şarkı, kategori ve setlist verisinin biçimi, ad denetimi ve varsayılanları |
 | `js/data/defaults.js` | İlk kurulumda gelen kategoriler |
 | `js/data/sample-songs.js` | Örnek şarkılar (uydurma; ilk açılışta bir kez eklenir) |
-| `js/lib/text.js` | Türkçeye uygun arama ve sıralama |
+| `js/lib/text.js` | Türkçeye uygun arama ve sıralama; İ/ı gibi harflerin bozulmadan saklanması |
 | `js/music/chords.js` | Transpoze motoru: akorları tanıma, yarım ses taşıma, diyez/bemol, tonlar |
 | `js/music/render.js` | Şarkıyı çizer: akorlar sözlerin üstünde, kelimeler bölünmeden |
 | `js/music/bookmarklet.js` | repertuarim.com / akorlar.com'dan aktarma yer imi (kısa yükleyici) ve aktarma kodu |
 | `aktar.js` | Yer iminin yüklediği aktarma kodu; `node tools/build-aktar.mjs` ile üretilir, elle değiştirilmez |
 | `js/music/ocr.js` | Ekran görüntüsünü okuma: okuyucuyu (Tesseract) ilk kullanımda indirip saklar, görüntüyü hazırlar |
-| `js/music/notation.js` | Nota motoru: tonlar ve donanımlar, nota kodu, süreler, ölçüler, donanımıyla birlikte transpoze |
+| `js/music/notation.js` | Nota motoru: tonlar ve donanımlar (majör, minör, Hicaz, Rast, Nihavend), nota kodu, süreler, ölçüler, donanımıyla birlikte transpoze |
 | `js/music/abc.js` | ABC nota yazısını uygulamanın notalarına çevirir (fotoğraf okuyucusunun çıktısı) |
 | `js/music/omr.js` | Fotoğraftan nota okuma: fotoğrafı LEGATO okuyucusuna (Hugging Face) gönderir, sonucu çevirir |
 | `js/music/staff.js` | Porte çizimi (SVG): sol/fa anahtarı, donanım, ölçü, süreleriyle notalar, suslar, ışınlar |
 | `js/music/ocr-sheet.js` | Okunan yazıyı akor sayfasına çevirir: akorları görüntüde durdukları harfe yerleştirir |
 | `js/music/song-text.js` | Şarkı metni: [Am] akorlarını bulma, bütün şarkıyı taşıma, ayrı satırdaki akorları [Am] biçimine çevirme |
 | `js/lib/dom.js` | Küçük arayüz yardımcıları ve simgeler |
-| `js/views/` | Ekranlar: şarkı listesi, şarkı ekranı, şarkı formu (ekleme/düzenleme), kategoriler, setlistler, notalar, durum, pencereler (onay, ad, seçim), ana ekrana ekleme |
+| `js/views/` | Ekranlar: şarkı listesi, şarkı ekranı, şarkı formu (ekleme/düzenleme), kategoriler, setlistler, notalar, yedekleme, durum, pencereler (onay, ad, seçim), ana ekrana ekleme |
 | `tools/` | Geliştirme yardımcıları (aktar.js üretimi) |
 | `sw.js` | Service worker: dosyaları cihaza kaydeder, uygulamanın internetsiz açılmasını sağlar |
 | `manifest.webmanifest` | Uygulamanın adı, simgesi ve renkleri |
