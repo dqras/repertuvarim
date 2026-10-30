@@ -29,6 +29,7 @@ import { createCategoriesView } from './views/categories.js';
 import { createSetlistsView, createSetlistView, newSetlistDialog } from './views/setlists.js';
 import { pickDialog } from './views/dialog.js';
 import { createScoresView, createScoreView, createScoreEditor } from './views/scores.js';
+import { createBackupView, describeLastBackup, shouldRemind, REMIND_AFTER_DAYS } from './views/backup.js';
 
 const byId = (id) => document.getElementById(id);
 
@@ -44,6 +45,7 @@ const views = {
   scores: byId('view-scores'),
   score: byId('view-score'),
   scoreEditor: byId('view-score-editor'),
+  backup: byId('view-backup'),
 };
 const tabs = {
   nav: byId('main-tabs'),
@@ -70,6 +72,7 @@ let scoresView = null;
 let scoreView = null;
 let scoreEditor = null;
 let scoreEditorId = null;
+let backupView = null;
 let editorSongId = null; // düzenlenen şarkı (yeni şarkıda null)
 
 // Ekranların paylaştığı güncel veriler (değişince repository.onChange ile yenilenir).
@@ -135,6 +138,7 @@ async function goBack() {
 function parentPath() {
   if (currentView === 'editor' && editorSongId) return `/sarki/${encodeURIComponent(editorSongId)}`;
   if (currentView === 'setlist') return '/setlistler';
+  if (currentView === 'backup') return '/durum';
   if (currentView === 'score') return '/notalar';
   if (currentView === 'scoreEditor') return scoreEditorId ? `/nota/${encodeURIComponent(scoreEditorId)}` : '/notalar';
   if (currentView === 'song' && currentSetlistId) return `/setlist/${encodeURIComponent(currentSetlistId)}`;
@@ -170,10 +174,12 @@ function updateStatus(changes) {
 
 /** Kayıtlı şarkı sayısını ve kullanılan alanı yeniler. */
 async function refreshStorageStatus() {
-  const [songCount, storage] = await Promise.all([
+  const [songCount, storage, lastBackupAt] = await Promise.all([
     repository.countSongs().catch(() => null),
     estimateStorage(),
+    repository.getSetting('lastBackupAt', null).catch(() => null),
   ]);
+  byId('state-backup').textContent = describeLastBackup(lastBackupAt);
   updateStatus({ songCount, storage });
 }
 
@@ -399,6 +405,37 @@ async function refreshDrafts() {
   }
 }
 
+// --- Düzenli yedek hatırlatması ------------------------------------------------
+
+/** Kendi şarkısı olan ve 14 günden uzun süredir yedek almayan kullanıcıya listede hatırlatır. */
+async function refreshBackupReminder() {
+  const box = byId('backup-reminder');
+  try {
+    let firstUseAt = await repository.getSetting('firstUseAt', null);
+    if (!firstUseAt) {
+      firstUseAt = Date.now();
+      await repository.setSetting('firstUseAt', firstUseAt);
+    }
+    const [lastBackupAt, snoozeUntil] = await Promise.all([
+      repository.getSetting('lastBackupAt', null),
+      repository.getSetting('backupSnoozeUntil', null),
+    ]);
+    const ownSongs = data.songs.filter((song) => !song.isSample).length;
+    const remind = shouldRemind({ lastBackupAt, snoozeUntil, ownSongs, firstUseAt });
+    byId('backup-reminder-text').textContent = lastBackupAt
+      ? `Son yedeğin üzerinden ${REMIND_AFTER_DAYS} günden fazla geçti. Şarkılarınız kaybolmasın diye yeni bir yedek alın.`
+      : 'Şarkılarınızın henüz yedeği yok. Cihaz değişir ya da tarayıcı verileri silinirse kaybolmasınlar diye bir yedek alın.';
+    box.hidden = !remind;
+  } catch (error) {
+    box.hidden = true;
+  }
+}
+
+byId('backup-reminder-later').addEventListener('click', () => {
+  byId('backup-reminder').hidden = true;
+  repository.setSetting('backupSnoozeUntil', Date.now() + 7 * 24 * 60 * 60 * 1000).catch(() => {});
+});
+
 // --- Şarkı ekranı ayarları ------------------------------------------------------
 
 /** Şarkı ekranının hatırlanan ayarları: bu şarkının transpozesi, yazı boyutu, ekran açık. */
@@ -576,6 +613,14 @@ function startAppRouter(categoryById) {
         },
       },
       {
+        pattern: /^\/yedek$/,
+        show: async () => {
+          if (appFailed) return navigate('/', { replace: true });
+          await backupView.show();
+          showView('backup', 'Yedekleme');
+        },
+      },
+      {
         pattern: /^\/durum$/,
         show: () => {
           showView('status', 'Durum');
@@ -684,10 +729,20 @@ async function start() {
     }
     refreshDrafts();
     refreshStorageStatus();
+    refreshBackupReminder();
+  });
+
+  backupView = createBackupView(views.backup, {
+    exportRecords: () => repository.exportRecords(),
+    importRecords: (records) => repository.importRecords(records),
+    getSetting: (key, fallback) => repository.getSetting(key, fallback),
+    setSetting: (key, value) => repository.setSetting(key, value),
+    appVersion: () => status.version ?? '',
   });
 
   startAppRouter(categoryById);
   refreshDrafts();
+  refreshBackupReminder();
 
   // Verilerin kendiliğinden silinmemesi için izin iste (tarayıcı genellikle sessizce karar verir).
   updateStatus({ persistence: await requestPersistence() });
