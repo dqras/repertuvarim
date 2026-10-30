@@ -140,3 +140,10 @@ mi5 fa5 sol#5 la5 |`);
   assert.equal(data.code, 'la4:4 si4 do5 re5 |\nmi5 fa5 sol#5 la5 |');
   assert.equal(parseScoreImport('başka bir metin'), null);
 });
+
+test('çift çizgiyle bölünmüş ölçü hata sayılmaz; gerçekten eksik ölçü sayılır', () => {
+  const key = parseKeyText('Fa majör');
+  // "fa2." (3 vuruş) + "do8 do8" (1 vuruş) = bölünmüş tek ölçü; 2. ölçüde bir nota eksik
+  const { measures } = parseNotes('do4:8 do4 | do4:4 fa4:8 fa4 fa4:4 fa4:8 | sol4:4 la4 si4 la4 | fa4:2. | do4:8 do4 | do4:4 fa4:8 fa4 fa4:4 mi4:8 fa4 |', key, parseTime('4/4'));
+  assert.deepEqual(measureProblems(measures, parseTime('4/4')).map((p) => p.index), [1]);
+});
