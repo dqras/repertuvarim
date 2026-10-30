@@ -83,7 +83,7 @@ function openDialog({ className = '', labelledBy, children, onCancel }) {
  * secondary: soldaki ek düğmenin yazısı (ör. "Kategoriyi sil"); basılırsa { secondary: true } döner.
  * Sonuç: kaydedilirse submit'in sonucu, vazgeçilirse null.
  */
-export function nameDialog({ title, label, value = '', confirmLabel = 'Kaydet', placeholder = '', extra = null, secondary = null, submit }) {
+export function nameDialog({ title, label, value = '', confirmLabel = 'Kaydet', placeholder = '', extra = null, secondary = null, maxLength = 40, inputType = 'text', submit }) {
   return new Promise((resolve) => {
     if (typeof HTMLDialogElement !== 'function') {
       const answer = window.prompt(title, value);
@@ -94,7 +94,7 @@ export function nameDialog({ title, label, value = '', confirmLabel = 'Kaydet', 
       });
       return;
     }
-    const input = el('input', { class: 'input', id: 'name-dialog-input', type: 'text', value, maxlength: '40', placeholder, autocomplete: 'off', enterkeyhint: 'done' });
+    const input = el('input', { class: 'input', id: 'name-dialog-input', type: inputType, value, maxlength: String(maxLength), placeholder, autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', enterkeyhint: 'done' });
     const error = el('p', { class: 'field__error', id: 'name-dialog-error', hidden: true, 'aria-live': 'polite' });
     const cancelButton = el('button', { type: 'button', class: 'button button--quiet' }, 'Vazgeç');
     const okButton = el('button', { type: 'submit', class: 'button button--primary' }, confirmLabel);

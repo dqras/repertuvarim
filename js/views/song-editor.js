@@ -111,8 +111,8 @@ export function createSongEditor(root, { categories, actions }) {
       title: textInput('ed-title', form.title, { maxlength: '200', autocomplete: 'off', enterkeyhint: 'next' }),
       artist: textInput('ed-artist', form.artist, { maxlength: '200', autocomplete: 'off', enterkeyhint: 'next' }),
       key: textInput('ed-key', form.key, {
-        maxlength: '6', list: 'ed-key-list', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false',
-        placeholder: 'ör. Am',
+        maxlength: '16', list: 'ed-key-list', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false',
+        placeholder: 'ör. Am ya da La minör',
       }),
       capo: el(
         'select',

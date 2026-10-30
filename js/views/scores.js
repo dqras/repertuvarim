@@ -16,17 +16,79 @@ import { describeStorageError } from '../data/db.js';
 import {
   DURATIONS, DURATION_NAMES, STEP_NAMES, SCORE_HEADER, TIME_SIGNATURES, allKeys, diatonic, fifthsOf,
   keyLabel, measureProblems, moveTarget, parseNotes, parseScoreImport, parseTime, pitchLabel, serializeNotes, signatureLabel, transposeScore,
-  transposeTargets,
+  transposeTargets, signatureOf, isKnownKey, isMakam, sameSignature,
 } from '../music/notation.js';
 import { watchStaff } from '../music/staff.js';
 import { cleanTitle } from '../music/abc.js';
-import { OmrError, readScorePhotos } from '../music/omr.js';
+import { OmrError, getReaderToken, looksLikeToken, readScorePhotos, setReaderToken } from '../music/omr.js';
 
 /** Notalar listesinde seçilen fotoğraflar: form açılınca okunmaya başlar. */
 let pendingPhotos = null;
 
 const PRIVACY = 'Fotoğraf, okunması için Hugging Face’teki ücretsiz LEGATO nota okuyucusuna gönderilir; internet gerekir. En iyi sonuç için notayı düz, iyi ışıkta ve sayfayı dolduracak şekilde çekin.';
-import { confirmDialog } from './dialog.js';
+
+/** Okuyucunun günlük ücretsiz hakkı hakkında kısa açıklama. */
+function quotaText(error) {
+  const wait = error?.retrySeconds;
+  const when = wait && wait > 60
+    ? ` Yaklaşık ${wait >= 3600 ? `${Math.ceil(wait / 3600)} saat` : `${Math.ceil(wait / 60)} dakika`} sonra yeniden okuyabilirsiniz.`
+    : ' Hak, ilk okumadan 24 saat sonra yenilenir.';
+  if (error?.withToken) {
+    return `Hugging Face hesabınızın bugünkü ücretsiz okuma hakkı doldu.${when} Bu arada notaları elle yazabilirsiniz.`;
+  }
+  return `Nota okuyucusunun bugünkü ücretsiz okuma hakkı doldu (anahtarsız kullanımda günde birkaç okuma).${when} `
+    + 'İsterseniz ücretsiz bir Hugging Face anahtarı ekleyerek günlük hakkı artırabilirsiniz; ya da notaları elle yazabilirsiniz.';
+}
+
+/**
+ * İsteğe bağlı Hugging Face anahtarı penceresi. Anahtar yalnızca bu cihazda saklanır.
+ * Sonuç: true (kaydedildi/silindi) ya da false.
+ */
+export async function readerTokenDialog() {
+  const current = getReaderToken();
+  const steps = el('div', { class: 'token-help' },
+    el('p', { class: 'field__hint', text: 'Anahtar isteğe bağlıdır ve ücretsizdir. Okuyucunun günlük okuma hakkını artırır:' }),
+    el('ol', { class: 'token-help__steps' },
+      el('li', {}, 'huggingface.co adresinde ücretsiz hesap açın (ödeme bilgisi istenmez).'),
+      el('li', {}, el('a', { href: 'https://huggingface.co/settings/tokens/new?tokenType=read', target: '_blank', rel: 'noopener' }, 'Anahtar sayfasını açın'), ', bir ad yazıp “Read” türünde anahtar oluşturun.'),
+      el('li', {}, '“hf_” ile başlayan anahtarı kopyalayıp buraya yapıştırın.')),
+    el('p', { class: 'field__hint', text: 'Anahtar yalnızca bu cihazda saklanır, yalnızca nota okuyucusuna gönderilir ve yedek dosyasına girmez.' }));
+  const answer = await nameDialog({
+    title: 'Okuma hakkını artır',
+    label: 'Hugging Face anahtarı',
+    value: current,
+    placeholder: 'hf_…',
+    confirmLabel: 'Kaydet',
+    maxLength: 200,
+    extra: steps,
+    secondary: current ? 'Anahtarı sil' : null,
+    submit: (value) => {
+      const token = String(value ?? '').trim();
+      if (!token) return { cleared: true };
+      if (!looksLikeToken(token)) {
+        const error = new Error('token');
+        error.detail = 'Bu bir Hugging Face anahtarına benzemiyor. “hf_” ile başlayan anahtarın tamamını yapıştırın.';
+        throw error;
+      }
+      return { token };
+    },
+  });
+  if (!answer) return false;
+  if (answer.secondary || answer.cleared) {
+    setReaderToken('');
+    showMessage('Anahtar silindi. Okuyucu anahtarsız kullanılacak.');
+  } else {
+    setReaderToken(answer.token);
+    showMessage('Anahtar kaydedildi. Fotoğraftan okumayı tekrar deneyebilirsiniz.');
+  }
+  return true;
+}
+
+function tokenButton(id, onDone) {
+  return el('button', { type: 'button', class: 'button button--quiet button--small', id, onclick: async () => { if (await readerTokenDialog()) onDone?.(); } },
+    getReaderToken() ? 'Anahtarı değiştir' : 'Okuma hakkını artır');
+}
+import { confirmDialog, nameDialog } from './dialog.js';
 import { showMessage } from './components.js';
 
 const NATURAL = [0, 2, 4, 5, 7, 9, 11];
@@ -35,7 +97,7 @@ const sameKey = (a, b) => a.step === b.step && a.alter === b.alter && a.mode ===
 const SCALE = { min: 0.7, max: 1.8, step: 0.1 };
 
 function keyDescription(key) {
-  return `${keyLabel(key)} (${signatureLabel(fifthsOf(key) ?? 0)})`;
+  return `${keyLabel(key)} (${signatureLabel(signatureOf(key) ?? 0)})`;
 }
 
 // --- Liste ----------------------------------------------------------------------------
@@ -53,6 +115,7 @@ export function createScoresView(root) {
           }),
           el('a', { class: 'button button--quiet', id: 'score-new', href: '#/nota/yeni' }, icon('plus'), 'Elle yaz')),
         el('p', { class: 'field__hint score-privacy', text: PRIVACY }),
+        el('div', { class: 'score-token' }, tokenButton('score-token', () => render(scores))),
         sorted.length
           ? el('ul', { class: 'setlist-list', id: 'score-list', role: 'list' },
               sorted.map((score) =>
@@ -127,7 +190,7 @@ export function createScoreView(root, { loadPrefs, savePref }) {
 
   function view() {
     const { score, measures, offset, octave } = current;
-    if (offset === 0 && octave === 0) return { measures, key: score.key, fifths: fifthsOf(score.key) ?? 0 };
+    if (offset === 0 && octave === 0) return { measures, key: score.key, signature: signatureOf(score.key) ?? 0 };
     return transposeScore(measures, score.key, targetFor(offset), octave);
   }
 
@@ -309,9 +372,33 @@ export function createScoreEditor(root, actions) {
     }
     const target = moveTarget(from, to);
     if (sameKey(target, from)) {
-      // Aynı donanım (ör. Do majör → La minör): notalar yerinde, yalnızca tonun adı değişir.
+      // Aynı donanım (ör. Do majör → La minör) ya da makam seçimi: notalar yerinde kalır.
+      if (!isMakam(from) && !isMakam(to)) {
+        refresh();
+        showReadNotice([el('p', { class: 'notice__text', id: 'sc-key-moved', text: `Ton ${keyLabel(to)} olarak değişti. Donanım aynı olduğu için notalar yerinde kaldı.` })]);
+        return;
+      }
+      // Makam: notalar yerinde; donanıma uymayan sesler işaretle yazılır. İsterse taşıyabilir.
+      ui.code.value = serializeNotes(measures, to);
       refresh();
-      showReadNotice([el('p', { class: 'notice__text', id: 'sc-key-moved', text: `Ton ${keyLabel(to)} olarak değişti. Donanım aynı olduğu için notalar yerinde kaldı.` })]);
+      const tonicMoves = (NATURAL[from.step] + from.alter - NATURAL[to.step] - to.alter) % 12 !== 0;
+      const same = sameSignature(signatureOf(from) ?? 0, signatureOf(to) ?? 0);
+      showReadNotice([
+        el('p', { class: 'notice__text', id: 'sc-key-moved' },
+          `Ton ${keyLabel(to)} (${signatureLabel(signatureOf(to) ?? 0)}) olarak değişti. Notalar yerinde kaldı`,
+          same ? '.' : '; donanıma uymayan sesler kendi işaretleriyle yazıldı.'),
+        tonicMoves
+          ? el('div', { class: 'notice__actions' },
+              el('button', { type: 'button', class: 'button button--quiet button--small', id: 'sc-key-move', onclick: () => {
+                const moved = transposeScore(measures, from, { ...to, mode: from.mode });
+                ui.code.value = serializeNotes(moved.measures, to);
+                refresh();
+                state.ui.readNotice.hidden = true;
+                const first = moved.measures.flat().find((item) => !item.rest);
+                showMessage(`Notalar ${keyLabel(to)} tonuna taşındı${first ? ` (ilk nota artık ${pitchLabel(first.step, first.alter)})` : ''}.`);
+              } }, `Notaları ${pitchLabel(to.step, to.alter)} perdesine taşı`))
+          : null,
+      ].filter(Boolean));
       return;
     }
     const moved = transposeScore(measures, from, target);
@@ -373,8 +460,17 @@ export function createScoreEditor(root, actions) {
         busy: 'Nota okuyucusu şu an çok yoğun. Birkaç dakika sonra tekrar deneyin.',
         timeout: 'Okuma çok uzun sürdü. Biraz sonra tekrar deneyin.',
         server: 'Nota okuyucusuna şu an ulaşılamıyor. Biraz sonra tekrar deneyin; olmazsa notaları elle yazabilirsiniz.',
+        quota: quotaText(error),
+        token: 'Kayıtlı Hugging Face anahtarı kabul edilmedi (silinmiş ya da yanlış olabilir). Anahtarı değiştirin ya da silin.',
       };
-      showReadNotice([el('p', { class: 'notice__text', text: messages[reason] ?? messages.server })]);
+      const retry = el('button', { type: 'button', class: 'button button--quiet button--small', id: 'sc-read-retry', onclick: () => readPhotos(files) }, 'Tekrar dene');
+      const actions = reason === 'quota' || reason === 'token'
+        ? [tokenButton('sc-read-token', () => readPhotos(files))]
+        : ['server', 'busy', 'timeout', 'offline'].includes(reason) ? [retry] : [];
+      showReadNotice([
+        el('p', { class: 'notice__text', id: 'sc-read-error', text: messages[reason] ?? messages.server }),
+        actions.length ? el('div', { class: 'notice__actions' }, ...actions) : null,
+      ].filter(Boolean));
       return;
     }
     state.reading = false;
@@ -443,11 +539,11 @@ export function createScoreEditor(root, actions) {
     ui.title = el('input', { class: 'input', id: 'sc-title', type: 'text', value: data.title, maxlength: '120', autocomplete: 'off' });
     ui.composer = el('input', { class: 'input', id: 'sc-composer', type: 'text', value: data.composer, maxlength: '120', autocomplete: 'off' });
     ui.key = el('select', { class: 'input', id: 'sc-key' });
-    for (const [mode, label] of [['major', 'Majör'], ['minor', 'Minör']]) {
+    for (const [mode, label] of [['major', 'Majör'], ['minor', 'Minör'], ['hicaz', 'Hicaz makamı'], ['rast', 'Rast makamı'], ['nihavend', 'Nihavend makamı']]) {
       const group = el('optgroup', { label });
       for (const item of allKeys(mode)) {
         const value = `${item.key.step},${item.key.alter},${mode}`;
-        group.append(el('option', { value, selected: sameKey(item.key, data.key) }, `${keyLabel(item.key)} (${signatureLabel(item.fifths)})`));
+        group.append(el('option', { value, selected: sameKey(item.key, data.key) }, `${keyLabel(item.key)} (${signatureLabel(item.signature)})`));
       }
       ui.key.append(group);
     }
@@ -534,7 +630,7 @@ export function createScoreEditor(root, actions) {
     const key = readKey();
     const { measures } = parsed();
     const highlight = new Set(measureProblems(measures, parseTime(state.ui.time.value)).map((p) => p.index));
-    return { measures, fifths: fifthsOf(key) ?? 0, time: parseTime(state.ui.time.value), showNames: true, scale: 0.9, clef: state.ui.clef.value, highlight };
+    return { measures, signature: signatureOf(key) ?? 0, time: parseTime(state.ui.time.value), showNames: true, scale: 0.9, clef: state.ui.clef.value, highlight };
   }
 
   function refresh() {
@@ -685,7 +781,7 @@ export function createScoreEditor(root, actions) {
     const { ui } = state;
     if (data.title) ui.title.value = data.title;
     if (data.composer) ui.composer.value = data.composer;
-    if (data.key && fifthsOf(data.key) !== null) ui.key.value = `${data.key.step},${data.key.alter},${data.key.mode}`;
+    if (isKnownKey(data.key)) ui.key.value = `${data.key.step},${data.key.alter},${data.key.mode}`;
     if (TIME_SIGNATURES.includes(data.time)) ui.time.value = data.time;
     ui.code.value = data.code;
     root.querySelector('.score-code')?.setAttribute('open', '');
