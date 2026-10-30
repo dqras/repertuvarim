@@ -28,6 +28,7 @@ import { setupInstallUi } from './views/install.js';
 import { createCategoriesView } from './views/categories.js';
 import { createSetlistsView, createSetlistView, newSetlistDialog } from './views/setlists.js';
 import { pickDialog } from './views/dialog.js';
+import { createScoresView, createScoreView, createScoreEditor } from './views/scores.js';
 
 const byId = (id) => document.getElementById(id);
 
@@ -40,11 +41,15 @@ const views = {
   categories: byId('view-categories'),
   setlists: byId('view-setlists'),
   setlist: byId('view-setlist'),
+  scores: byId('view-scores'),
+  score: byId('view-score'),
+  scoreEditor: byId('view-score-editor'),
 };
 const tabs = {
   nav: byId('main-tabs'),
   songs: byId('tab-songs'),
   setlists: byId('tab-setlists'),
+  scores: byId('tab-scores'),
 };
 const topbar = {
   brand: byId('topbar-brand'),
@@ -61,10 +66,14 @@ let songView = null;
 let categoriesView = null;
 let setlistsView = null;
 let setlistView = null;
+let scoresView = null;
+let scoreView = null;
+let scoreEditor = null;
+let scoreEditorId = null;
 let editorSongId = null; // düzenlenen şarkı (yeni şarkıda null)
 
 // Ekranların paylaştığı güncel veriler (değişince repository.onChange ile yenilenir).
-const data = { songs: [], categories: [], setlists: [] };
+const data = { songs: [], categories: [], setlists: [], scores: [] };
 const categoryById = new Map(); // şarkı ekranı bu nesneyi kullanır; yerinde güncellenir
 let appFailed = false;
 
@@ -81,11 +90,13 @@ function showView(name, title, { backLabel = null } = {}) {
   if (previous === 'editor' && name !== 'editor') editor?.suspend().then(refreshDrafts);
   // Şarkı ekranından çıkınca ekran kilidi ve yerleşim izleme bırakılır.
   if (previous === 'song' && name !== 'song') songView?.hide();
+  if (previous === 'score' && name !== 'score') scoreView?.hide();
+  if (previous === 'scoreEditor' && name !== 'scoreEditor') scoreEditor?.close();
 
   for (const [key, node] of Object.entries(views)) node.hidden = key !== name;
 
   const isList = name === 'list';
-  const isHome = isList || name === 'setlists'; // ana bölümler: üstte sekmeler, geri düğmesi yok
+  const isHome = isList || name === 'setlists' || name === 'scores'; // ana bölümler: üstte sekmeler, geri yok
   topbar.brand.hidden = !isHome;
   topbar.back.hidden = isHome;
   topbar.backLabel.textContent = backLabel ?? (name === 'song' ? 'Şarkılar' : 'Geri');
@@ -94,9 +105,11 @@ function showView(name, title, { backLabel = null } = {}) {
   tabs.setlists.toggleAttribute('aria-current', name === 'setlists');
   if (isList) tabs.songs.setAttribute('aria-current', 'page');
   if (name === 'setlists') tabs.setlists.setAttribute('aria-current', 'page');
+  tabs.scores.toggleAttribute('aria-current', name === 'scores');
+  if (name === 'scores') tabs.scores.setAttribute('aria-current', 'page');
   addButton.hidden = !isList || appFailed;
   document.body.classList.toggle('has-fab', isList && !appFailed);
-  document.body.classList.toggle('has-bar', name === 'song');
+  document.body.classList.toggle('has-bar', name === 'song' || name === 'score');
   document.title = title ? `${title} – Repertuvarım` : 'Repertuvarım';
 
   // Listeye dönünce kalınan yere, diğer ekranlarda en üste.
@@ -110,6 +123,7 @@ function showView(name, title, { backLabel = null } = {}) {
 /** Geri: formda değişiklik varsa önce sorar; geride uygulama ekranı yoksa bir üst ekrana gider. */
 async function goBack() {
   if (currentView === 'editor' && editor && !(await editor.requestLeave())) return;
+  if (currentView === 'scoreEditor' && scoreEditor && !(await scoreEditor.requestLeave())) return;
   if (canGoBack()) {
     history.back();
   } else {
@@ -121,6 +135,8 @@ async function goBack() {
 function parentPath() {
   if (currentView === 'editor' && editorSongId) return `/sarki/${encodeURIComponent(editorSongId)}`;
   if (currentView === 'setlist') return '/setlistler';
+  if (currentView === 'score') return '/notalar';
+  if (currentView === 'scoreEditor') return scoreEditorId ? `/nota/${encodeURIComponent(scoreEditorId)}` : '/notalar';
   if (currentView === 'song' && currentSetlistId) return `/setlist/${encodeURIComponent(currentSetlistId)}`;
   return '/';
 }
@@ -195,12 +211,13 @@ async function setUpOfflineSupport() {
 
 /** Şarkıları, kategorileri ve setlistleri veritabanından yeniden okur. */
 async function loadData() {
-  const [songs, categories, setlists] = await Promise.all([
+  const [songs, categories, setlists, scores] = await Promise.all([
     repository.listSongs(),
     repository.listCategories(),
     repository.listSetlists(),
+    repository.listScores(),
   ]);
-  Object.assign(data, { songs, categories, setlists });
+  Object.assign(data, { songs, categories, setlists, scores });
   categoryById.clear();
   for (const category of categories) categoryById.set(category.id, category);
 }
@@ -217,6 +234,21 @@ async function findSetlist(id) {
 
 function songMap() {
   return new Map(data.songs.map((song) => [song.id, song]));
+}
+
+/** Notanın seçilen tonu (şarkı başına) ve porte boyutu / nota adları (bütün notalar için). */
+async function loadScorePrefs(id) {
+  const [saved, scale, names] = await Promise.all([
+    repository.getSetting(`scoreKey:${id}`, null),
+    repository.getSetting('scoreScale', 1),
+    repository.getSetting('scoreNames', true),
+  ]).catch(() => [null, 1, true]);
+  return { target: saved ? { step: saved.step, alter: saved.alter } : null, octave: saved?.octave ?? 0, scale, names };
+}
+
+function saveScorePref(name, value, id) {
+  const key = name === 'target' ? `scoreKey:${id}` : name === 'scale' ? 'scoreScale' : 'scoreNames';
+  repository.setSetting(key, value).catch((error) => console.error('Tercih kaydedilemedi:', error));
 }
 
 const NEW_SETLIST = '__yeni__';
@@ -420,6 +452,43 @@ function startAppRouter(categoryById) {
         },
       },
       {
+        pattern: /^\/notalar$/,
+        show: () => {
+          if (appFailed) return navigate('/', { replace: true });
+          scoresView.show(data.scores);
+          showView('scores', 'Notalar');
+        },
+      },
+      {
+        pattern: /^\/nota\/yeni$/,
+        show: () => {
+          if (appFailed) return navigate('/', { replace: true });
+          scoreEditorId = null;
+          scoreEditor.open(null);
+          showView('scoreEditor', 'Yeni nota');
+        },
+      },
+      {
+        pattern: /^\/nota\/(?<id>[^/]+)$/,
+        show: async ({ id }) => {
+          if (appFailed) return navigate('/', { replace: true });
+          const score = await repository.getScore(id).catch(() => null);
+          await scoreView.show(score);
+          showView('score', score ? score.title : 'Nota bulunamadı');
+        },
+      },
+      {
+        pattern: /^\/nota\/(?<id>[^/]+)\/duzenle$/,
+        show: async ({ id }) => {
+          if (appFailed) return navigate('/', { replace: true });
+          const score = await repository.getScore(id).catch(() => null);
+          if (!score) return navigate('/notalar', { replace: true });
+          scoreEditorId = score.id;
+          scoreEditor.open(score);
+          showView('scoreEditor', `Düzenle: ${score.title}`);
+        },
+      },
+      {
         pattern: /^\/kategoriler$/,
         show: () => {
           if (appFailed) return navigate('/', { replace: true });
@@ -568,6 +637,34 @@ async function start() {
     onDeleted: () => (canGoBack() && previousPath() === '/setlistler' ? history.back() : navigate('/setlistler', { replace: true })),
   });
 
+  scoresView = createScoresView(views.scores);
+  scoreView = createScoreView(views.score, { loadPrefs: loadScorePrefs, savePref: saveScorePref });
+  scoreEditor = createScoreEditor(views.scoreEditor, {
+    leave: goBack,
+    async save(fields, id) {
+      let score;
+      try {
+        score = id ? await repository.updateScore(id, fields) : await repository.createScore(fields);
+      } catch (error) {
+        return reportAndRethrow('Nota kaydedilemedi:', error);
+      }
+      showMessage(id ? 'Değişiklikler kaydedildi.' : 'Nota kaydedildi.');
+      const path = `/nota/${encodeURIComponent(score.id)}`;
+      if (id && canGoBack() && previousPath() === `/nota/${score.id}`) history.back();
+      else navigate(path, { replace: true });
+      return score;
+    },
+    async remove(id) {
+      try {
+        await repository.deleteScore(id);
+      } catch (error) {
+        reportAndRethrow('Nota silinemedi:', error);
+      }
+      showMessage('Nota silindi.');
+      navigate('/notalar', { replace: true });
+    },
+  });
+
   // Kayıtlı veriler değişince (ekleme, düzenleme, silme, favori, kategori, setlist)
   // açık ekranlar ve durum yenilenir.
   repository.onChange(async () => {
@@ -577,6 +674,7 @@ async function start() {
       listView.setCategories(data.categories);
       if (currentView === 'categories') categoriesView.update(data.categories, data.songs);
       if (currentView === 'setlists') setlistsView.update(data.setlists, songMap());
+      if (currentView === 'scores') scoresView.update(data.scores);
       if (currentView === 'setlist') setlistView.update(data.setlists.find((item) => item.id === setlistView.id) ?? null, data.songs);
     } catch (error) {
       console.error('Liste yenilenemedi:', error);
