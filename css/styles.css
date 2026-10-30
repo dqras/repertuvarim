@@ -1158,6 +1158,32 @@ a {
   gap: var(--space-2);
 }
 
+/* Ekran görüntüsü okunurken dönen küçük halka */
+.spinner {
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  margin-right: 0.5em;
+  vertical-align: -0.15em;
+  border: 2px solid var(--color-line);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
+
 .chord-brackets {
   margin-right: 6px;
   color: var(--color-accent);
@@ -1833,4 +1859,511 @@ a {
   font-weight: 700;
   text-decoration: none;
   cursor: grab;
+}
+
+/* =========================================================================
+   9. aşama: sekmeler, kategoriler, setlistler, seçim pencereleri
+   ========================================================================= */
+
+/* Simgeli düğmeler */
+.button {
+  gap: var(--space-2);
+}
+
+.button > .icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+}
+
+.button > .icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.icon-button--small {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-button);
+}
+
+.icon-button--small svg {
+  width: 20px;
+  height: 20px;
+}
+
+.icon-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.icon-button--danger:hover {
+  color: var(--color-danger);
+}
+
+/* Şarkılar | Setlistler */
+.tabs {
+  background: var(--color-bg);
+}
+
+.tabs__inner {
+  display: flex;
+  gap: var(--space-1);
+  max-width: var(--page-width);
+  margin: 0 auto;
+  padding: var(--space-3) max(var(--space-4), env(safe-area-inset-right)) 0 max(var(--space-4), env(safe-area-inset-left));
+}
+
+.tabs__tab {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-button);
+  color: var(--color-text-muted);
+  font-weight: 650;
+  text-align: center;
+  text-decoration: none;
+}
+
+.tabs__tab:hover {
+  color: var(--color-text);
+}
+
+.tabs__tab[aria-current="page"] {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+/* Kategori düğmelerinin sonundaki "Düzenle" */
+.chip--manage {
+  border-style: dashed;
+  text-decoration: none;
+}
+
+.field__link {
+  display: inline-block;
+  margin-top: var(--space-3);
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+/* Yönetim listeleri (kategoriler) */
+.manage-lead {
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.manage-list,
+.setlist-list,
+.set-songs {
+  margin-top: var(--space-5);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-group);
+  background: var(--color-surface);
+  list-style: none;
+}
+
+.manage-row,
+.set-song {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 60px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+}
+
+.manage-row + .manage-row,
+.set-song + .set-song,
+.setlist-row + .setlist-row {
+  border-top: 1px solid var(--color-line);
+}
+
+.manage-row__dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--cat);
+}
+
+.manage-row__text,
+.set-song__text,
+.setlist-row__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.manage-row__title,
+.set-song__title,
+.setlist-row__title {
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manage-row__sub,
+.set-song__sub,
+.setlist-row__sub {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manage-row__actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+/* Renk seçici */
+.color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.color-picker__swatch {
+  width: 36px;
+  height: 36px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: var(--cat);
+  background-clip: content-box;
+  padding: 3px;
+  cursor: pointer;
+}
+
+.color-picker__swatch[aria-checked="true"] {
+  border-color: var(--color-text);
+}
+
+/* Setlistler */
+.setlist-row__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 64px;
+  padding: var(--space-3) var(--space-4);
+  color: inherit;
+  text-decoration: none;
+}
+
+.setlist-row__link:hover {
+  background: var(--color-surface-raised);
+}
+
+.setlist-row__icon {
+  display: inline-flex;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  color: var(--color-accent);
+}
+
+.setlist-row__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.empty--setlists {
+  margin-top: var(--space-6);
+  text-align: left;
+}
+
+.setlist-view__count {
+  margin-top: var(--space-1);
+}
+
+.setlist-view__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.setlist-view__manage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.set-song {
+  padding: 0 var(--space-2) 0 0;
+}
+
+.set-song__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 60px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  color: inherit;
+  text-decoration: none;
+}
+
+.set-song__link:hover {
+  background: var(--color-surface-raised);
+}
+
+.set-song__number {
+  flex: none;
+  min-width: 1.6em;
+  color: var(--color-accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Şarkı ekranında setlist gezinmesi */
+.setlist-nav {
+  margin-bottom: var(--space-4);
+}
+
+.setlist-nav--bottom {
+  margin: var(--space-6) 0 0;
+}
+
+.setlist-nav__where {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.setlist-nav__where .icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  color: var(--color-accent);
+}
+
+.setlist-nav__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.setlist-nav__button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 52px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-button);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.setlist-nav__button:hover {
+  border-color: var(--color-text-muted);
+}
+
+.setlist-nav__button--next {
+  justify-content: flex-end;
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-line));
+  text-align: right;
+}
+
+.setlist-nav__button .icon {
+  display: inline-flex;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--color-accent);
+}
+
+.setlist-nav__next-icon {
+  transform: scaleX(-1);
+}
+
+.setlist-nav__label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.setlist-nav__hint {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.setlist-nav__title {
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setlist-nav__end {
+  align-self: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* Ad ve seçim pencereleri */
+.dialog__form .input {
+  margin-top: var(--space-2);
+}
+
+.dialog__form .field {
+  margin-top: var(--space-4);
+}
+
+.dialog--pick {
+  width: min(calc(100% - 2 * var(--space-4)), 30rem);
+}
+
+.dialog--pick .dialog__body {
+  display: flex;
+  flex-direction: column;
+  max-height: min(80vh, 40rem);
+}
+
+.dialog--pick .input {
+  margin-top: var(--space-3);
+}
+
+.pick-list {
+  flex: 1;
+  min-height: 6rem;
+  margin: var(--space-3) calc(-1 * var(--space-2)) 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  overscroll-behavior: contain;
+}
+
+.pick-list__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 52px;
+  padding: var(--space-2);
+  border-radius: var(--radius-button);
+  cursor: pointer;
+}
+
+.pick-list__label:hover {
+  background: var(--color-surface);
+}
+
+.pick-list__box {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  accent-color: var(--color-accent);
+}
+
+.pick-list__box:disabled + .pick-list__text {
+  opacity: 0.55;
+}
+
+.pick-list__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pick-list__title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick-list__sub {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.pick-list__empty {
+  padding: var(--space-4) var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.dialog--pick .dialog__actions {
+  margin-top: var(--space-4);
+}
+
+/* Kategori satırı: dokununca düzenleme penceresi açılır */
+.manage-row {
+  padding: 0 var(--space-2) 0 0;
+}
+
+.manage-row__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 60px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+}
+
+.manage-row__button {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.manage-row__button:hover {
+  background: var(--color-surface-raised);
+}
+
+.manage-row__edit {
+  display: inline-flex;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-muted);
+}
+
+.manage-row__edit svg {
+  width: 100%;
+  height: 100%;
+}
+
+.manage-list .manage-row:has(.manage-row__button) {
+  padding-right: 0;
+}
+
+.manage-row__button {
+  padding-right: var(--space-4);
+}
+
+.icon-button--small {
+  border: 1px solid var(--color-line);
+  background: transparent;
+}
+
+.dialog--pick .input,
+.dialog__form .input {
+  min-height: var(--tap);
+}
+
+.dialog__secondary {
+  margin-right: auto;
 }
