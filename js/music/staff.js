@@ -84,8 +84,8 @@ function bassClef(g, x, yOf, s) {
     fill: 'none', stroke: 'currentColor', 'stroke-width': s * 0.3, 'stroke-linecap': 'round',
     d: `M ${cx - s * 0.3} ${fy - s * 0.2} C ${cx - s * 0.2} ${fy - s * 1.4} ${cx + s * 2.1} ${fy - s * 1.6} ${cx + s * 2.1} ${fy + s * 0.2} C ${cx + s * 2.1} ${fy + s * 1.8} ${cx + s * 0.6} ${fy + s * 3.2} ${cx - s * 0.6} ${fy + s * 3.6}`,
   }, g);
-  node('circle', { cx: cx + s * 2.8, cy: yOf(37), r: s * 0.2, fill: 'currentColor' }, g);
-  node('circle', { cx: cx + s * 2.8, cy: yOf(35), r: s * 0.2, fill: 'currentColor' }, g);
+  node('circle', { cx: cx + s * 2.55, cy: yOf(37), r: s * 0.2, fill: 'currentColor' }, g);
+  node('circle', { cx: cx + s * 2.55, cy: yOf(35), r: s * 0.2, fill: 'currentColor' }, g);
 }
 
 function accidental(g, kind, x, y, s) {
@@ -158,7 +158,7 @@ function flags(g, count, x, yEnd, up, s) {
 
 // --- Bir satırın çizimi --------------------------------------------------------------------
 
-function drawLine(container, line, { fifths, time, showNames, s, width, first, last, clef }) {
+function drawLine(container, line, { fifths, time, showNames, s, width, first, last, clef, highlight, firstIndex }) {
   // Dikey yer: satırdaki en yüksek/alçak notaya göre
   let maxPos = TOP_LINE + 3;
   let minPos = BOTTOM_LINE - 3;
@@ -188,7 +188,7 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
 
   if (clef === 'bass') bassClef(g, s * 0.4, yOf, s);
   else trebleClef(g, s * 0.4, yOf, s);
-  let x = s * 3.2;
+  let x = clef === 'bass' ? s * 4.8 : s * 3.2;
   const sigSteps = signatureSteps(fifths);
   for (const step of sigSteps) {
     const sigPos = (fifths > 0 ? SHARP_POS[step] : FLAT_POS[step]) - (clef === 'bass' ? 2 : 0);
@@ -207,8 +207,9 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
   const spare = Math.max(0, width - x - line.width);
   const stretch = last && line.width + x < width * 0.7 ? 0 : spare / Math.max(1, line.count);
 
-  for (const measure of line.measures) {
+  line.measures.forEach((measure, measureNumber) => {
     const measureX = x;
+    const globalIndex = firstIndex + measureNumber;
     // Ölçü değişimi: ölçünün başına yeni ölçü işareti
     const meterHere = measure.items[0]?.item.meter;
     if (meterHere) {
@@ -326,8 +327,10 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
     const drawTuplet = () => {
       if (!tupletGroup.length) return;
       const xs = tupletGroup.map((p) => p.cx);
-      const tops = tupletGroup.map((p) => (p.item.rest ? yOf(TOP_LINE) : yOf(posOf(p.item)) - s * 3.6));
-      const y = Math.min(yOf(TOP_LINE), ...tops) - s * 0.7;
+      const notes = tupletGroup.filter((p) => !p.item.rest);
+      const stemsUp = notes.length && notes.reduce((sum, p) => sum + posOf(p.item), 0) / notes.length < MIDDLE;
+      const tops = tupletGroup.map((p) => (p.item.rest ? yOf(TOP_LINE) : yOf(posOf(p.item)) - (stemsUp ? s * 3.6 : s * 0.9)));
+      const y = Math.min(yOf(TOP_LINE) + s * 0.5, ...tops) - s * 0.7;
       const textNode = node('text', { x: (Math.min(...xs) + Math.max(...xs)) / 2 + s * 0.3, y, 'text-anchor': 'middle', 'font-size': s * 1.3, 'font-style': 'italic', 'font-weight': 700, fill: 'currentColor', class: 'staff-tuplet' }, g);
       textNode.textContent = String(tupletGroup[0].item.tup);
       tupletGroup = [];
@@ -340,6 +343,12 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
     drawTuplet();
 
     x = measureX + measureWidth;
+    if (highlight?.has(globalIndex)) {
+      // Süresi tutmayan ölçü: kırmızımsı zemin ve ölçü numarası (düzeltilecek yer)
+      const rect = node('rect', { x: measureX + 1, y: yOf(TOP_LINE) - s * 2.2, width: Math.max(4, x - measureX - 2), height: yOf(BOTTOM_LINE) - yOf(TOP_LINE) + s * 4.4, rx: s * 0.4, class: 'staff-problem' });
+      g.insertBefore(rect, g.firstChild);
+      node('text', { x: measureX + s * 0.4, y: yOf(TOP_LINE) - s * 1.0, 'font-size': s * 1.1, 'font-weight': 700, class: 'staff-problem-number' }, g).textContent = String(globalIndex + 1);
+    }
     const isFinal = last && measure === line.measures[line.measures.length - 1];
     if (isFinal) {
       node('line', { x1: x - s * 0.7, x2: x - s * 0.7, y1: yOf(TOP_LINE), y2: yOf(BOTTOM_LINE), stroke: 'currentColor', 'stroke-width': s * 0.12 }, g);
@@ -347,7 +356,7 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
     } else {
       node('line', { x1: x, x2: x, y1: yOf(TOP_LINE), y2: yOf(BOTTOM_LINE), stroke: 'currentColor', 'stroke-width': s * 0.12 }, g);
     }
-  }
+  });
   container.append(svg);
 }
 
@@ -355,12 +364,12 @@ function drawLine(container, line, { fifths, time, showNames, s, width, first, l
  * Besteyi container içine çizer.
  * options: { measures, fifths, time: {num, den}, showNames, scale }
  */
-export function renderStaff(container, { measures, fifths, time, showNames = true, scale = 1, clef = 'treble' }) {
+export function renderStaff(container, { measures, fifths, time, showNames = true, scale = 1, clef = 'treble', highlight = null }) {
   clefShift = clef === 'bass' ? 12 : 0;
   const s = 9.5 * scale; // porte aralığı (piksel)
   const width = Math.max(240, Math.floor(container.clientWidth || 320));
   const marked = withAccidentals(measures, fifths);
-  const headerWidth = s * 3.6 + signatureSteps(fifths).length * s * 1.05 + s * 0.4;
+  const headerWidth = (clef === 'bass' ? s * 5.2 : s * 3.6) + signatureSteps(fifths).length * s * 1.05 + s * 0.4;
   const firstExtra = s * 2.2;
 
   // Ölçüleri satırlara dağıt
@@ -384,9 +393,11 @@ export function renderStaff(container, { measures, fifths, time, showNames = tru
     // Boş porte
     lines.push({ measures: [], width: 0, count: 0 });
   }
-  lines.forEach((current, index) =>
-    drawLine(container, current, { fifths, time, showNames, s, width, first: index === 0, last: index === lines.length - 1, clef })
-  );
+  let firstIndex = 0;
+  lines.forEach((current, index) => {
+    drawLine(container, current, { fifths, time, showNames, s, width, first: index === 0, last: index === lines.length - 1, clef, highlight, firstIndex });
+    firstIndex += current.measures.length;
+  });
 }
 
 /** Genişlik değişince yeniden çizer; bırakmak için dönen nesnenin stop()'unu çağırın. */

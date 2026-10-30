@@ -325,18 +325,29 @@ export function serializeNotes(measures, key) {
     .concat(measures.length ? ' |' : '');
 }
 
-/** Ölçü süresi uymayan ölçüler (anacrouse için ilk ölçü hariç): [{ index, have, need }] */
+/**
+ * Süresi ölçüye uymayan ölçüler: [{ index, have, need }].
+ * Hata sayılmayanlar: baştaki eksik ölçü (anacrouse), sondaki eksik ölçü ve bir ölçünün
+ * çift çizgiyle ikiye bölünmesi (art arda iki eksik ölçü birlikte tam bir ölçü ediyorsa).
+ */
 export function measureProblems(measures, time) {
   let need = measureLength(time);
-  const problems = [];
-  measures.forEach((measure, index) => {
+  const info = measures.map((measure) => {
     if (measure[0]?.meter) need = measureLength(parseTime(measure[0].meter));
-    const have = measure.reduce((sum, item) => sum + beats(item), 0);
-    const isPickup = index === 0 && have < need;
-    const isLast = index === measures.length - 1 && have < need;
-    if (Math.abs(have - need) > 1e-6 && !isPickup && !isLast) problems.push({ index, have, need });
+    return { have: measure.reduce((sum, item) => sum + beats(item), 0), need };
   });
-  return problems;
+  const ok = info.map(({ have, need: full }) => Math.abs(have - full) < 1e-6);
+  for (let i = 0; i < info.length; i += 1) {
+    if (ok[i]) continue;
+    const { have, need: full } = info[i];
+    if (have < full && i === 0) ok[i] = true;
+    else if (have < full && i === info.length - 1) ok[i] = true;
+    else if (have < full && i + 1 < info.length && !ok[i + 1] && Math.abs(have + info[i + 1].have - full) < 1e-6) {
+      ok[i] = true;
+      ok[i + 1] = true;
+    }
+  }
+  return info.map((item, index) => ({ index, ...item })).filter((item) => !ok[item.index]);
 }
 
 // --- Transpoze ----------------------------------------------------------------------
