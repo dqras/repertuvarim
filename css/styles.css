@@ -2367,3 +2367,200 @@ a {
 .dialog__secondary {
   margin-right: auto;
 }
+
+/* =========================================================================
+   Notalar: porte
+   ========================================================================= */
+
+.staff {
+  color: var(--color-text);
+}
+
+.staff-line {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.staff-name {
+  fill: var(--color-text-muted);
+  font-family: var(--font-ui);
+}
+
+.staff-rule {
+  opacity: 0.75;
+}
+
+/* Notalar: liste, ekran, düzenleme */
+.score-row__icon {
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.score-view .staff {
+  margin-top: var(--space-5);
+}
+
+.score-status__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.score-octave {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.score-photo {
+  margin-top: var(--space-4);
+}
+
+.score-photo img,
+.score-photo-field__img {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-button);
+}
+
+.score-photo-field__img {
+  max-height: 240px;
+  margin-bottom: var(--space-3);
+}
+
+.score-preview {
+  min-height: 90px;
+  padding: var(--space-2) 0;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-button);
+  background: var(--color-surface);
+}
+
+.field-row--two {
+  grid-template-columns: 1.6fr 1fr;
+}
+
+.input--code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.score-code {
+  margin-top: var(--space-4);
+}
+
+.score-code summary {
+  color: var(--color-accent);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.score-code .input {
+  margin-top: var(--space-2);
+}
+
+/* Nota klavyesi */
+.keyboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-group);
+  background: var(--color-surface);
+}
+
+.keyboard__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.keyboard__row--notes .kb-key {
+  flex: 1 1 0;
+  min-width: 40px;
+  font-size: var(--text-md);
+}
+
+.kb-key {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 2px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.kb-key:hover {
+  border-color: var(--color-text-muted);
+}
+
+.kb-key[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.kb-key--dur {
+  flex: 1 1 0;
+  min-width: 52px;
+  padding: 2px 4px;
+}
+
+.kb-key__big {
+  font-size: var(--text-sm);
+  font-weight: 750;
+}
+
+.kb-key__small {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.kb-key--acc {
+  font-size: var(--text-lg);
+}
+
+.kb-octave {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.kb-octave__label {
+  min-width: 6.5em;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+/* Alt çubuk: ton düğmesi kalan yeri doldurur, uzun ton adlarında taşmaz */
+.song-bar__group:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.song-bar__group:first-child .bar-key {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 0;
+  max-width: 13rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
