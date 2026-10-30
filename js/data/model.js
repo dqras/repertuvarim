@@ -223,6 +223,7 @@ export function normalizeScore(raw = {}) {
     composer: toText(raw.composer).trim(),
     key,
     time: /^\d{1,2}\/(1|2|4|8|16)$/.test(toText(raw.time)) ? toText(raw.time) : '4/4',
+    clef: raw.clef === 'bass' ? 'bass' : 'treble',
     code: toText(raw.code).replace(/\r\n?/g, '\n'),
     notes: toText(raw.notes),
     photo: typeof Blob !== 'undefined' && raw.photo instanceof Blob ? raw.photo : null,
