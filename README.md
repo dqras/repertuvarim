@@ -11,20 +11,24 @@ Adres: https://dqras.github.io/repertuvarim/
 | `index.html` | Uygulamanın sayfası ve ekranların iskeleti |
 | `css/styles.css` | Görünüm: renkler, yazılar, yerleşim |
 | `js/app.js` | Başlangıç noktası; verileri yükler, ekranları hazırlar |
-| `js/router.js` | Ekranlar arası geçiş (`#/`, `#/sarki/…`, `#/sarki/…/duzenle`, `#/yeni`, `#/aktar`, `#/durum`) |
+| `js/router.js` | Ekranlar arası geçiş (`#/`, `#/sarki/…`, `#/sarki/…/duzenle`, `#/yeni`, `#/aktar`, `#/durum`, `#/kategoriler`, `#/setlistler`, `#/setlist/…`, `#/favoriler`) |
 | `js/pwa.js` | Kurulum, güncelleme ve bağlantı durumu |
 | `js/data/repository.js` | Veri erişimi: ekranlar şarkılara yalnızca buradan ulaşır |
 | `js/data/db.js` | Cihazdaki veritabanı (IndexedDB), sürüm yükseltmeleri, kalıcı depolama izni |
-| `js/data/model.js` | Şarkı ve kategori verisinin biçimi ve varsayılanları |
+| `js/data/model.js` | Şarkı, kategori ve setlist verisinin biçimi, ad denetimi ve varsayılanları |
 | `js/data/defaults.js` | İlk kurulumda gelen kategoriler |
 | `js/data/sample-songs.js` | Örnek şarkılar (uydurma; ilk açılışta bir kez eklenir) |
 | `js/lib/text.js` | Türkçeye uygun arama ve sıralama |
 | `js/music/chords.js` | Transpoze motoru: akorları tanıma, yarım ses taşıma, diyez/bemol, tonlar |
 | `js/music/render.js` | Şarkıyı çizer: akorlar sözlerin üstünde, kelimeler bölünmeden |
-| `js/music/bookmarklet.js` | repertuarim.com / akorlar.com'dan aktarma yer imi |
+| `js/music/bookmarklet.js` | repertuarim.com / akorlar.com'dan aktarma yer imi (kısa yükleyici) ve aktarma kodu |
+| `aktar.js` | Yer iminin yüklediği aktarma kodu; `node tools/build-aktar.mjs` ile üretilir, elle değiştirilmez |
+| `js/music/ocr.js` | Ekran görüntüsünü okuma: okuyucuyu (Tesseract) ilk kullanımda indirip saklar, görüntüyü hazırlar |
+| `js/music/ocr-sheet.js` | Okunan yazıyı akor sayfasına çevirir: akorları görüntüde durdukları harfe yerleştirir |
 | `js/music/song-text.js` | Şarkı metni: [Am] akorlarını bulma, bütün şarkıyı taşıma, ayrı satırdaki akorları [Am] biçimine çevirme |
 | `js/lib/dom.js` | Küçük arayüz yardımcıları ve simgeler |
-| `js/views/` | Ekranlar: şarkı listesi, şarkı ekranı, şarkı formu (ekleme/düzenleme), durum, onay penceresi, ana ekrana ekleme |
+| `js/views/` | Ekranlar: şarkı listesi, şarkı ekranı, şarkı formu (ekleme/düzenleme), kategoriler, setlistler, durum, pencereler (onay, ad, seçim), ana ekrana ekleme |
+| `tools/` | Geliştirme yardımcıları (aktar.js üretimi) |
 | `sw.js` | Service worker: dosyaları cihaza kaydeder, uygulamanın internetsiz açılmasını sağlar |
 | `manifest.webmanifest` | Uygulamanın adı, simgesi ve renkleri |
 | `icons/` | Uygulama simgeleri |

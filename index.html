@@ -33,6 +33,14 @@
     </div>
   </header>
 
+  <!-- Ana bölümler: Şarkılar ve Setlistler -->
+  <nav class="tabs" id="main-tabs" aria-label="Bölümler" hidden>
+    <div class="tabs__inner">
+      <a class="tabs__tab" id="tab-songs" href="#/">Şarkılar</a>
+      <a class="tabs__tab" id="tab-setlists" href="#/setlistler">Setlistler</a>
+    </div>
+  </nav>
+
   <main id="main">
     <!-- Şarkı listesi (ana ekran) -->
     <section class="view" id="view-list" aria-labelledby="list-title" hidden>
@@ -90,6 +98,13 @@
 
     <!-- Şarkı ekleme ve düzenleme: içeriğini js/views/song-editor.js çizer -->
     <section class="view" id="view-editor" hidden></section>
+
+    <!-- Kategoriler: js/views/categories.js -->
+    <section class="view" id="view-categories" hidden></section>
+
+    <!-- Setlistler ve tek bir setlist: js/views/setlists.js -->
+    <section class="view" id="view-setlists" hidden></section>
+    <section class="view" id="view-setlist" hidden></section>
 
     <!-- Sitelerden aktarma: içeriğini js/views/import-help.js çizer -->
     <section class="view" id="view-import" hidden></section>
