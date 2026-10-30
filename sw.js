@@ -11,7 +11,7 @@
  * yalnızca uygulamanın kendi dosyalarını tutar; yenilense bile şarkılar etkilenmez.
  */
 
-const VERSION = '0.10.0';
+const VERSION = '0.11.0';
 const CACHE_PREFIX = 'repertuvarim-';
 const CACHE_NAME = `${CACHE_PREFIX}${VERSION}`;
 
@@ -27,10 +27,12 @@ const APP_FILES = [
   './js/router.js',
   './js/lib/dom.js',
   './js/lib/text.js',
+  './js/music/abc.js',
   './js/music/bookmarklet.js',
   './js/music/chords.js',
   './js/music/notation.js',
   './js/music/ocr.js',
+  './js/music/omr.js',
   './js/music/ocr-sheet.js',
   './js/music/render.js',
   './js/music/song-text.js',
