@@ -453,8 +453,9 @@ function startAppRouter(categoryById) {
       },
       {
         pattern: /^\/notalar$/,
-        show: () => {
+        show: async () => {
           if (appFailed) return navigate('/', { replace: true });
+          await loadData().catch(() => {}); // az önce silinen/eklenen nota da doğru görünsün
           scoresView.show(data.scores);
           showView('scores', 'Notalar');
         },
@@ -498,8 +499,9 @@ function startAppRouter(categoryById) {
       },
       {
         pattern: /^\/setlistler$/,
-        show: () => {
+        show: async () => {
           if (appFailed) return navigate('/', { replace: true });
+          await loadData().catch(() => {});
           setlistsView.show(data.setlists, songMap());
           showView('setlists', 'Setlistler');
         },
