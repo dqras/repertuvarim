@@ -27,7 +27,10 @@ Adres: https://dqras.github.io/repertuvarim/
 | `js/music/ocr.js` | Ekran görüntüsünü okuma: okuyucuyu (Tesseract) ilk kullanımda indirip saklar, görüntüyü hazırlar |
 | `js/music/notation.js` | Nota motoru: tonlar ve donanımlar (majör, minör, Hicaz, Rast, Nihavend), nota kodu, süreler, ölçüler, donanımıyla birlikte transpoze |
 | `js/music/abc.js` | ABC nota yazısını uygulamanın notalarına çevirir (fotoğraf okuyucusunun çıktısı) |
-| `js/music/omr.js` | Fotoğraftan nota okuma: fotoğrafı LEGATO okuyucusuna (Hugging Face) gönderir, sonucu çevirir |
+| `js/music/omr.js` | Fotoğraftan nota okuma: önce telefondaki okuyucu; istenirse gelişmiş okuyucu (LEGATO, Hugging Face, internet gerekir) |
+| `js/music/omr-local.js` | Telefondaki nota okuyucu: porte, nota başları, saplar, kirişler, suslar, değiştiriciler, donanım, ölçü işareti, üçlemeler (internet gerekmez) |
+| `js/music/omr-worker.js` | Okumayı ayrı iş parçacığında yapar (ekran donmasın) |
+| `js/music/omr-digits.js` | Ölçü işareti ve üçleme rakamlarını tanımak için örnek rakamlar |
 | `js/music/staff.js` | Porte çizimi (SVG): sol/fa anahtarı, donanım, ölçü, süreleriyle notalar, suslar, ışınlar |
 | `js/music/ocr-sheet.js` | Okunan yazıyı akor sayfasına çevirir: akorları görüntüde durdukları harfe yerleştirir |
 | `js/music/song-text.js` | Şarkı metni: [Am] akorlarını bulma, bütün şarkıyı taşıma, ayrı satırdaki akorları [Am] biçimine çevirme |
