@@ -11,7 +11,7 @@
  * yalnızca uygulamanın kendi dosyalarını tutar; yenilense bile şarkılar etkilenmez.
  */
 
-const VERSION = '0.12.1';
+const VERSION = '0.13.0';
 const CACHE_PREFIX = 'repertuvarim-';
 const CACHE_NAME = `${CACHE_PREFIX}${VERSION}`;
 
@@ -25,6 +25,7 @@ const APP_FILES = [
   './js/app.js',
   './js/pwa.js',
   './js/router.js',
+  './js/theme.js',
   './js/lib/dom.js',
   './js/lib/text.js',
   './js/music/abc.js',
