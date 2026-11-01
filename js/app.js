@@ -30,6 +30,7 @@ import { createSetlistsView, createSetlistView, newSetlistDialog } from './views
 import { pickDialog } from './views/dialog.js';
 import { createScoresView, createScoreView, createScoreEditor } from './views/scores.js';
 import { createBackupView, describeLastBackup, shouldRemind, REMIND_AFTER_DAYS } from './views/backup.js';
+import { currentTheme, setTheme, toggleTheme } from './theme.js';
 
 const byId = (id) => document.getElementById(id);
 
@@ -753,6 +754,24 @@ async function start() {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && currentView === 'editor') editor?.flush();
 });
+
+// Tema: üst çubuktaki düğme ve Durum ekranındaki seçim aynı ayarı değiştirir.
+function showTheme() {
+  const theme = currentTheme();
+  const button = byId('theme-toggle');
+  const label = theme === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç';
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  for (const choice of document.querySelectorAll('[data-theme-choice]')) {
+    choice.setAttribute('aria-pressed', String(choice.dataset.themeChoice === theme));
+  }
+}
+byId('theme-toggle').addEventListener('click', toggleTheme);
+for (const choice of document.querySelectorAll('[data-theme-choice]')) {
+  choice.addEventListener('click', () => setTheme(choice.dataset.themeChoice));
+}
+document.addEventListener('themechange', showTheme);
+showTheme();
 
 // "Ana ekrana ekle": listede bir kart ve Durum ekranında bir düğme.
 // Yükleme penceresine izin veren olay sayfa açılır açılmaz gelebileceği için en başta kurulur.
