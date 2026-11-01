@@ -12,6 +12,7 @@ Adres: https://dqras.github.io/repertuvarim/
 | `css/styles.css` | Görünüm: renkler, yazılar, yerleşim |
 | `js/app.js` | Başlangıç noktası; verileri yükler, ekranları hazırlar |
 | `js/router.js` | Ekranlar arası geçiş (`#/`, `#/sarki/…`, `#/sarki/…/duzenle`, `#/yeni`, `#/aktar`, `#/durum`, `#/kategoriler`, `#/setlistler`, `#/setlist/…`, `#/favoriler`, `#/notalar`, `#/nota/…`, `#/yedek`) |
+| `js/theme.js` | Koyu/açık tema seçimi (cihazda saklanır) |
 | `js/pwa.js` | Kurulum, güncelleme ve bağlantı durumu |
 | `js/data/repository.js` | Veri erişimi: ekranlar şarkılara yalnızca buradan ulaşır |
 | `js/data/db.js` | Cihazdaki veritabanı (IndexedDB), sürüm yükseltmeleri, kalıcı depolama izni |
