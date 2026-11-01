@@ -2,8 +2,8 @@
    Repertuvarım — görünüm
    Renkler ve ölçüler aşağıdaki değişkenlerde tanımlıdır; bir rengi değiştirmek
    için yalnızca buradaki değeri değiştirmek yeterlidir.
-   Koyu tema varsayılandır. Açık temanın değerleri hazırdır; tema seçimi
-   ileriki bir aşamada eklenecek.
+   Koyu tema varsayılandır; açık tema üst çubuktaki güneş/ay düğmesiyle ya da
+   Durum ekranından seçilir (js/theme.js) ve cihazda saklanır.
    ========================================================================== */
 
 :root {
@@ -16,6 +16,8 @@
   --color-text-muted: #aba2b8;     /* ikincil yazı */
   --color-accent: #ffd43b;         /* sahne ışığı (sarı): akorlar, ton ve ana düğmeler */
   --color-accent-ink: #2a1a00;     /* vurgu renginin üstündeki yazı */
+  --color-accent-fill: #ffd43b;    /* ana düğmelerin zemini */
+  --color-accent-fill-ink: #2a1a00;
   --color-ok: #74d7a6;
   --color-danger: #ff7a7a;
   --color-neutral: #8f86a0;
@@ -76,8 +78,10 @@
   --color-line: #e3e0ea;
   --color-text: #231c2e;
   --color-text-muted: #6b6478;
-  --color-accent: #7a5a00; /* açık zeminde okunabilsin diye koyu sarı */
+  --color-accent: #8a5f00; /* açık zeminde okunabilsin diye koyu kehribar (akorlar, ton) */
   --color-accent-ink: #ffffff;
+  --color-accent-fill: #f6c21c; /* ana düğmeler: sahne ışığı sarısı, koyu yazıyla */
+  --color-accent-fill-ink: #2a1a00;
   --color-ok: #1f8a5b;
   --color-danger: #c62f2f;
   --color-neutral: #8a8496;
@@ -267,8 +271,54 @@ a {
   color: var(--color-text);
 }
 
-.topbar__status {
+.topbar__theme {
   margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* Koyu temada güneş (açığa geç), açık temada ay (koyuya geç) görünür. */
+.theme-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.theme-icon--moon,
+:root[data-theme="light"] .theme-icon--sun {
+  display: none;
+}
+
+:root[data-theme="light"] .theme-icon--moon {
+  display: block;
+}
+
+/* İki seçenekli düğme grubu (Tema: Koyu / Açık) */
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: var(--color-bg);
+}
+
+.segmented__item {
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.segmented__item[aria-pressed="true"] {
+  background: var(--color-accent-fill);
+  color: var(--color-accent-fill-ink);
 }
 
 /* Durum noktası: yeşil = internetsiz kullanıma hazır */
@@ -376,8 +426,8 @@ a {
 }
 
 .button--primary {
-  background: var(--color-accent);
-  color: var(--color-accent-ink);
+  background: var(--color-accent-fill);
+  color: var(--color-accent-fill-ink);
 }
 
 .button--primary:hover {
@@ -802,8 +852,8 @@ a {
   height: var(--fab-height);
   padding: 0 var(--space-4) 0 var(--space-3);
   border-radius: 999px;
-  background: var(--color-accent);
-  color: var(--color-accent-ink);
+  background: var(--color-accent-fill);
+  color: var(--color-accent-fill-ink);
   font-size: var(--text-sm);
   font-weight: 700;
   text-decoration: none;
@@ -878,8 +928,8 @@ a {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--color-accent);
-  color: var(--color-accent-ink);
+  background: var(--color-accent-fill);
+  color: var(--color-accent-fill-ink);
   font-size: var(--text-sm);
   font-weight: 700;
 }
@@ -2517,8 +2567,8 @@ a {
 
 .kb-key[aria-pressed="true"] {
   border-color: var(--color-accent);
-  background: var(--color-accent);
-  color: var(--color-accent-ink);
+  background: var(--color-accent-fill);
+  color: var(--color-accent-fill-ink);
 }
 
 .kb-key--dur {
